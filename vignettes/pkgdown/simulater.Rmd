@@ -1,0 +1,15 @@
+---
+title: "Model > Simulate"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r include = FALSE}
+library(dplyr)
+library(magrittr)
+```
+
+```{r child = "_simulater.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

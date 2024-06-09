@@ -1,0 +1,232 @@
+url: https://radiant-rstats.github.io/radiant.model
+
+template:
+  params:
+    docsearch:
+      api_key: 279f8fe71a37f83093f51a606ddc3f50
+      index_name: radiant_model
+
+navbar:
+  title: "radiant.model"
+  left:
+    - icon: fa-home fa-lg
+      href: index.html
+    - text: "Reference"
+      href: reference/index.html
+    - text: "Articles"
+      href: articles/index.html
+    - text: "Changelog"
+      href: news/index.html
+    - text: "Other Packages"
+      menu:
+        - text: "radiant"
+          href: https://radiant-rstats.github.io/radiant/
+        - text: "radiant.data"
+          href: https://radiant-rstats.github.io/radiant.data/
+        - text: "radiant.design"
+          href: https://radiant-rstats.github.io/radiant.design/
+        - text: "radiant.basics"
+          href: https://radiant-rstats.github.io/radiant.basics/
+        - text: "radiant.model"
+          href: https://radiant-rstats.github.io/radiant.model/
+        - text: "radiant.multivariate"
+          href: https://radiant-rstats.github.io/radiant.multivariate/
+        - text: "docker"
+          href: https://github.com/radiant-rstats/docker
+  right:
+   - icon: fa-twitter fa-lg
+     href: https://twitter.com/vrnijs
+   - icon: fa-github fa-lg
+     href: https://github.com/radiant-rstats
+
+reference:
+- title: Model > Linear regression (OLS)
+  desc: Estimate linear regression models
+  contents:
+    - regress
+    - summary.regress
+    - predict.regress
+    - print.regress.predict
+    - plot.regress
+- title: Model > Logistic regression
+  desc: Estimate logistic regression models
+  contents:
+    - logistic
+    - summary.logistic
+    - predict.logistic
+    - print.logistic.predict
+    - plot.logistic
+    - confint_robust
+- title: Model > Multinomial logistic regression
+  desc: Estimate multinomial logistic regression models
+  contents:
+    - mnl
+    - summary.mnl
+    - predict.mnl
+    - print.mnl.predict
+    - plot.mnl.predict
+    - store.mnl.predict
+    - plot.mnl
+- title: Model > Neural network
+  desc: Estimate neural network models
+  contents:
+    - nn
+    - summary.nn
+    - predict.nn
+    - print.nn.predict
+    - plot.nn
+    - cv.nn
+- title: Model > Naive Bayes
+  desc: Estimate naive Bayes models
+  contents:
+    - nb
+    - summary.nb
+    - predict.nb
+    - print.nb.predict
+    - plot.nb.predict
+    - store.nb.predict
+    - plot.nb
+- title: Model > Classification and regression trees
+  desc: Estimate classification and regression trees
+  contents:
+    - crtree
+    - summary.crtree
+    - predict.crtree
+    - print.crtree.predict
+    - plot.crtree
+    - cv.crtree
+- title: Model > Random Forest
+  desc: Estimate a random forest of classification or regression trees
+  contents:
+    - rforest
+    - summary.rforest
+    - predict.rforest
+    - print.rforest.predict
+    - plot.rforest.predict
+    - store.rforest.predict
+    - plot.rforest
+    - cv.rforest
+- title: Model > Gradient Boosted Trees
+  desc: Estimate a gradient boosted trees for regression of classification
+  contents:
+    - gbt
+    - summary.gbt
+    - predict.gbt
+    - print.gbt.predict
+    - plot.gbt
+    - cv.gbt
+- title: Model > Evaluate regression
+  desc: Evaluate regression models
+  contents:
+    - evalreg
+    - summary.evalreg
+    - plot.evalreg
+    - MAE
+    - RMSE
+    - Rsq
+    - profit
+- title: Model > Evaluate classification
+  desc: Evaluate binary classification models
+  contents:
+    - evalbin
+    - summary.evalbin
+    - plot.evalbin
+    - confusion
+    - summary.confusion
+    - plot.confusion
+    - auc
+    - rig
+    - uplift
+    - summary.uplift
+    - plot.uplift
+- title: Model > Collaborative filtering
+  desc: Esitmate collaborative filtering models
+  contents:
+    - crs
+    - summary.crs
+    - plot.crs
+- title: Model > Decision analysis
+  desc: Create and evaluate decision trees
+  contents:
+    - dtree
+    - summary.dtree
+    - plot.dtree
+    - sensitivity
+    - sensitivity.dtree
+    - dtree_parser
+- title: Model > Simulate
+  desc: Create simulation models
+  contents:
+    - simulater
+    - summary.simulater
+    - plot.simulater
+    - repeater
+    - summary.repeater
+    - plot.repeater
+    - sim_summary
+    - sdw
+    - sim_cleaner
+    - sim_splitter
+    - sim_cor
+    - find_max
+    - find_min
+- title: General modeling functions
+  desc: General modeling functions
+  contents:
+    - plot.model.predict
+    - scale_df
+    - minmax
+    - onehot
+    - predict_model
+    - print_predict_model
+    - store.model
+    - store.model.predict
+    - render.DiagrammeR
+    - test_specs
+    - var_check
+    - write.coeff
+    - pdp_plot
+    - pred_plot
+    - varimp
+    - varimp_plot
+- title: Starting radiant.model
+  desc: Functions used to start radiant shiny apps
+  contents:
+    - radiant.model
+    - radiant.model_viewer
+    - radiant.model_window
+- title: Data sets
+  desc: Data sets bundled with radiant.model
+  contents:
+    - catalog
+    - dvd
+    - direct_marketing
+    - houseprices
+    - ideal
+    - kaggle_uplift
+    - ketchup
+    - movie_contract
+    - ratings
+- title: Deprecated
+  desc: Deprecated
+  contents:
+    - ann
+    - store.crs
+articles:
+- title: Model Menu
+  desc: >
+    These vignettes provide an introduction to the Model menu in radiant
+  contents:
+    - pkgdown/regress
+    - pkgdown/logistic
+    - pkgdown/mnl
+    - pkgdown/nn
+    - pkgdown/nb
+    - pkgdown/crtree
+    - pkgdown/rforest
+    - pkgdown/gbt
+    - pkgdown/evalreg
+    - pkgdown/evalbin
+    - pkgdown/crs
+    - pkgdown/dtree
+    - pkgdown/simulater

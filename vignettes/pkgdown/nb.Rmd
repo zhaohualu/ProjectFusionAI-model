@@ -1,0 +1,10 @@
+---
+title: "Model > Naive Bayes"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r child = "_nb.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

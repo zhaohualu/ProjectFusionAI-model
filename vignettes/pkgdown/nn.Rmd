@@ -1,0 +1,10 @@
+---
+title: "Model > Neural Network"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r child = "_nn.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

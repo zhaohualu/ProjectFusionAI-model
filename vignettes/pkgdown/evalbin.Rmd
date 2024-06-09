@@ -1,0 +1,10 @@
+---
+title: "Model > Evaluate classification"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r child = "_evalbin.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

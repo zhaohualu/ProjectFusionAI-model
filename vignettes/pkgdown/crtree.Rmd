@@ -1,0 +1,10 @@
+---
+title: "Model > Classification and regression trees"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r child = "_crtree.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

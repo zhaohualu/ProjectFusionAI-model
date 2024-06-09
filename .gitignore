@@ -1,0 +1,13 @@
+.Rproj.user
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+radiant.model.Rproj
+.DS_Store
+cran-comments.md
+docs/
+.vscode/
+docker/
+*.state.rda
+solutions/

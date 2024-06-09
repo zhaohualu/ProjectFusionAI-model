@@ -1,0 +1,10 @@
+---
+title: "Model > Logistic regression"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r child = "_logistic.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

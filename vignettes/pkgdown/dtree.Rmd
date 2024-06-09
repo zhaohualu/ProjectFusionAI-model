@@ -1,0 +1,10 @@
+---
+title: "Model > Decision Analysis"
+author: "Vincent R. Nijs, Rady School of Management (UCSD)"
+---
+
+```{r child = "_dtree.Rmd"}
+```
+
+```{r child = "_footer.md"}
+```

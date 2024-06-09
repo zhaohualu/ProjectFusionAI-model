@@ -1,0 +1,15 @@
+^CRAN-RELEASE$
+^.*\.Rproj$
+^\.Rproj\.user$
+^inst/rstudio$
+build/
+^\.travis\.yml$
+cran-comments.md
+_pkgdown.yml
+docs/
+vignettes/
+.vscode/
+docker/
+^CRAN-SUBMISSION$
+^.*\.state\.rda$
+solutions/
