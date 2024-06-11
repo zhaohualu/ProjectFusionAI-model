@@ -20,6 +20,12 @@ crtree_inputs <- reactive({
   for (i in r_drop(names(crtree_args))) {
     crtree_args[[i]] <- input[[paste0("crtree_", i)]]
   }
+  crtree_args$prior <- as.numeric(strsplit(crtree_args$prior, ",")[[1]])
+  crtree_args$cost <- as.numeric(strsplit(crtree_args$cost, ",")[[1]])
+  crtree_args$margin <- as.numeric(strsplit(crtree_args$margin, ",")[[1]])
+  crtree_args$cp <- as.numeric(strsplit(crtree_args$cp, ",")[[1]])
+  crtree_args$pcp <- as.numeric(strsplit(crtree_args$pcp, ",")[[1]])
+  crtree_args$nodes <- as.numeric(strsplit(crtree_args$nodes, ",")[[1]])
   crtree_args
 })
 
@@ -232,6 +238,35 @@ output$ui_crtree_nrobs <- renderUI({
 
 ## add a spinning refresh icon if the model needs to be (re)estimated
 run_refresh(crtree_args, "crtree", tabs = "tabs_crtree", label = "Estimate model", relabel = "Re-estimate model")
+output$ui_crtree_prior <- renderUI({
+  conditionalPanel(
+    condition = "input.crtree_type == 'classification'",
+    textInput("crtree_prior", "Prior (comma-separated):", value = "0.5")
+  )
+})
+
+
+output$ui_crtree_cost_margin <- renderUI({
+  conditionalPanel(
+    condition = "input.crtree_type == 'classification'",
+    fluidRow(
+      column(6, textInput("crtree_cost", "Cost (comma-separated):", value = "NA")),
+      column(6, textInput("crtree_margin", "Margin (comma-separated):", value = "NA"))
+    )
+  )
+})
+
+output$ui_crtree_cp <- renderUI({
+  textInput("crtree_cp", "Complexity (comma-separated):", value = "0.001")
+})
+
+output$ui_crtree_pcp <- renderUI({
+  textInput("crtree_pcp", "Prune Complexity (comma-separated):", value = "NA")
+})
+
+output$ui_crtree_nodes <- renderUI({
+  textInput("crtree_nodes", "Nodes (comma-separated):", value = "NA")
+})
 
 output$ui_crtree <- renderUI({
   req(input$dataset)
@@ -255,58 +290,17 @@ output$ui_crtree <- renderUI({
         uiOutput("ui_crtree_lev"),
         uiOutput("ui_crtree_evar"),
         # uiOutput("ui_crtree_wts"),
-        conditionalPanel(
-          condition = "input.crtree_type == 'classification'",
-          tags$table(
-            tags$td(numericInput(
-              "crtree_prior",
-              label = "Prior:",
-              value = state_init("crtree_prior", .5, na.rm = FALSE),
-              min = 0, max = 1, step = 0.1,
-              width = "116px"
-            )),
-            tags$td(numericInput(
-              "crtree_minsplit",
-              label = "Min obs.:",
-              value = state_init("crtree_minsplit", 2)
-            ))
-          ),
-          tags$table(
-            tags$td(numericInput(
-              "crtree_cost",
-              label = "Cost:",
-              value = state_init("crtree_cost", NA)
-            )),
-            tags$td(numericInput(
-              "crtree_margin",
-              label = "Margin:",
-              value = state_init("crtree_margin", NA)
-            ))
-          )
-        ),
+        uiOutput("ui_crtree_prior"),
+        uiOutput("ui_crtree_cost_margin"),
+        uiOutput("ui_crtree_cp"),
+        uiOutput("ui_crtree_pcp"),
+        uiOutput("ui_crtree_nodes"),
         tags$table(
           tags$td(numericInput(
-            "crtree_cp",
-            label = "Complexity:", min = 0,
-            max = 1, step = 0.001,
-            value = state_init("crtree_cp", 0.001), width = "116px"
+            "crtree_minsplit",
+            label = "Min obs.:",
+            value = state_init("crtree_minsplit", 2)
           )),
-          tags$td(numericInput(
-            "crtree_nodes",
-            label = "Max. nodes:", min = 2,
-            value = state_init("crtree_nodes", NA), width = "100%"
-          ))
-        ),
-        tags$table(
-          tags$td(numericInput(
-            "crtree_pcp",
-            label = "Prune compl.:", min = 0, step = 0.001,
-            value = state_init("crtree_pcp", NA), width = "116px"
-          )),
-          # tags$td(numericInput(
-          #   "crtree_K", label = "K-folds:",
-          #   value = state_init("crtree_K", 10), width = "116px"
-          # )),
           tags$td(numericInput(
             "crtree_seed",
             label = "Seed:",
@@ -403,6 +397,7 @@ output$ui_crtree <- renderUI({
     )
   )
 })
+
 
 crtree_plot <- reactive({
   if (crtree_available() != "available") {
@@ -533,7 +528,17 @@ crtree_available <- reactive({
 
 .summary_crtree <- reactive({
   if (not_pressed(input$crtree_run)) {
-    "** Press the Estimate button to estimate the model **"
+    "** Press the Estimate button to estimate the model.
+
+  **The tuning parameters (adjust as you would like)**
+
+  Prior: Probability aassigned to the event of interest before considering the evidence.
+  Max Nodes: The max number of terminal nodes (leaves) in the tree.
+  Complexity: The complexity parameter used to control the size of the decision tree, to prevent overfitting.
+  Prune Complexity: The complexity parameter used during pruning to control the size of the pruned tree.
+  Seed: The seed value used for random number generation, ensuring reproducibility of results.
+  Cost: The penalty associated with misclassifying a non-event as an event.
+  Margin: The margin parameter used to adjust the loss function for classification tasks.**"
   } else if (crtree_available() != "available") {
     crtree_available()
   } else {
