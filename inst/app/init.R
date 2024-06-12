@@ -50,6 +50,15 @@ r_url_list[["Gradient Boosted Trees"]] <-
     "Predict" = "model/gbt/predict/",
     "Plot" = "model/gbt/plot/"
   ))
+
+# Add the Survival Analysis tab
+r_url_list[["Survival Analysis"]] <-
+  list("tabs_survival" = list(
+    "Summary" = "model/survival/",
+    "Predict" = "model/survival/predict/",
+    "Plot" = "model/survival/plot/"
+  ))
+
 options(radiant.url.list = r_url_list)
 rm(r_url_list)
 
@@ -72,7 +81,10 @@ options(
         "----", "Trees",
         tabPanel("Classification and regression trees", uiOutput("crtree")),
         tabPanel("Random Forest", uiOutput("rf")),
-        tabPanel("Gradient Boosted Trees", uiOutput("gbt"))
+        tabPanel("Gradient Boosted Trees", uiOutput("gbt")),
+        # Add the Survival Analysis tab
+        tabPanel("Survival Analysis", uiOutput("survival"))
       )
     )
 )
+
