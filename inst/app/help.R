@@ -7,6 +7,7 @@ help_model <- c(
   "Classification and regression trees" = "crtree.md",
   "Random Forest" = "rf.md",
   "Gradient Boosted Trees" = "gbt.md",
+  "Survival Analysis" = "gbt_survival.Rmd",
   "Evaluate regression" = "evalreg.md",
   "Evaluate classification" = "evalbin.md",
   "Collaborative filtering" = "crs.md",
