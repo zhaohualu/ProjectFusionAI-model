@@ -22,3 +22,5 @@ if (!"package:radiant.model" %in% search() &&
 } else {
   options(radiant.from.package = TRUE)
 }
+source("gbt_survival.R", encoding = getOption("radiant.encoding", "UTF-8"), local = TRUE)
+source("gbt_survival_ui.R", encoding = getOption("radiant.encoding", "UTF-8"), local = TRUE)
