@@ -51,7 +51,6 @@
 #' @importFrom lubridate is.Date
 #' @importFrom survival survfit survdiff Surv
 #' @importFrom broom tidy
-#' @importFrom survC1 Cindex
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
@@ -63,7 +62,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                          envir = parent.frame(), ...) {
   if (time_var %in% evar || status_var %in% evar) {
     return("Time or status variable contained in the set of explanatory variables.\nPlease update model specification." %>%
-             add_class("gbt"))
+             add_class("gbt_survival"))
   }
 
   vars <- c(time_var, status_var, evar)
@@ -88,7 +87,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     if (length(wts) != nrow(dataset)) {
       return(
         paste0("Length of the weights variable is not equal to the number of rows in the dataset (", format_nr(length(wts), dec = 0), " vs ", format_nr(nrow(dataset), dec = 0), ")") %>%
-          add_class("gbt")
+          add_class("gbt_survival")
       )
     }
   }
@@ -96,7 +95,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     return(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>%
-             add_class("gbt"))
+             add_class("gbt_survival"))
   }
 
   gbt_input <- list(
@@ -149,7 +148,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   ## needed to work with prediction functions
   check <- ""
 
-  as.list(environment()) %>% add_class(c("gbt", "model"))
+  as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 
 
 }
@@ -225,8 +224,8 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     if (length(ih) > 20) ih <- c(head(ih, 10), "...", tail(ih, 10))
     cat(paste0(ih, collapse = "\n"))
   }
-
 }
+
 #' Predict method for the gbt_survival function
 #'
 #' @details See \url{https://radiant-rstats.github.io/docs/model/gbt.html} for an example in Radiant
@@ -321,37 +320,6 @@ print.gbt_survival.predict <- function(x, ..., n = 10) {
 #' @param early_stopping_rounds Early stopping rule
 #' @param nthread Number of parallel threads to use. Defaults to 12 if available
 #' @param train Training data in xgboost DMatrix format
-#' @param type Type of model ("classification" or "regression")
-#' @param trace Logical flag for tracing progress
-#' @param seed Random seed to use as the starting point
-#' @param maximize Logical flag indicating whether to maximize the evaluation metric
-#' @param fun Custom evaluation function
-#' @param ... Further arguments to pass to xgboost
-#'
-#' @return A data frame with the cross-validation results
-#'
-#' @examples
-#' \dontrun{
-#' cv.gbt_survival(gbt_model, K = 5, repeats = 1, params = list(max_depth = 6, eta = 0.3))
-#' }
-#' @importFrom xgboost xgb.cv xgb.DMatrix
-#' @importFrom dplyr bind_rows
-#' @importFrom shiny incProgress withProgress
-#'
-#' @export
-#' Cross-Validated Gradient Boosted Trees using XGBoost for Survival Analysis
-#'
-#' @details See \url{https://radiant-rstats.github.io/docs/model/gbt.html} for an example in Radiant
-#'
-#' @param object The model object, either a previously fitted `gbt` object or an `xgb.Booster`
-#' @param K Number of folds for cross-validation
-#' @param repeats Number of times to repeat the cross-validation
-#' @param params List of parameters for the xgboost model
-#' @param nrounds Number of trees to create
-#' @param early_stopping_rounds Early stopping rule
-#' @param nthread Number of parallel threads to use. Defaults to 12 if available
-#' @param train Training data in xgboost DMatrix format
-#' @param type Type of model ("classification" or "regression")
 #' @param trace Logical flag for tracing progress
 #' @param seed Random seed to use as the starting point
 #' @param maximize Logical flag indicating whether to maximize the evaluation metric
@@ -371,9 +339,8 @@ print.gbt_survival.predict <- function(x, ..., n = 10) {
 #' @export
 cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
                             nrounds = 500, early_stopping_rounds = 10, nthread = 12,
-                            train = NULL, type = "classification",
-                            trace = TRUE, seed = 1234, maximize = NULL, fun, ...) {
-  if (inherits(object, "gbt")) {
+                            train = NULL, trace = TRUE, seed = 1234, maximize = NULL, fun, ...) {
+  if (inherits(object, "gbt_survival")) {
     time_var <- object$time_var
     status_var <- object$status_var
     dataset <- object$model$model
@@ -392,7 +359,6 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
     dty <- dataset[[time_var]]
     dstatus <- dataset[[status_var]]
     train <- xgboost::xgb.DMatrix(data = dtx, label = dty)
-    type <- "survival"
     objective <- "survival:cox"
     params_base <- object$model$params
   } else if (!inherits(object, "xgb.Booster")) {
@@ -476,12 +442,9 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
   })
 
   out <- bind_rows(out)
-  if (type == "classification") {
-    out[order(out[[5]], decreasing = TRUE), ]
-  } else {
-    out[order(out[[5]], decreasing = FALSE), ]
-  }
+  out[order(out[[5]], decreasing = FALSE), ]
 }
+
 
 
 
