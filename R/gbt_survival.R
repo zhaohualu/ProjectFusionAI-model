@@ -283,15 +283,15 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   }
 
   # Create a new dataframe for predictions if pred_cmd is provided
-  if (!is.null(pred_cmd) && pred_cmd != "") {
-    pred_data <- eval(parse(text = paste0("expand.grid(", paste(pred_cmd, collapse = ","), ")")), envir)
-  }
+ # if (!is.null(pred_cmd) && pred_cmd != "") {
+    #pred_data <- eval(parse(text = paste0("expand.grid(", paste(pred_cmd, collapse = ","), ")")), envir)
+  #}
 
   # Ensure pred_data contains all required variables
-  missing_vars <- setdiff(object$evar, colnames(pred_data))
-  if (length(missing_vars) > 0) {
-    stop(paste("The following variables are missing in pred_data:", paste(missing_vars, collapse = ", ")))
-  }
+  #missing_vars <- setdiff(object$evar, colnames(pred_data))
+ # if (length(missing_vars) > 0) {
+   # stop(paste("The following variables are missing in pred_data:", paste(missing_vars, collapse = ", ")))
+  #}
 
   predict_model(object, pfun, "gbt_survival.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
     set_attr("radiant_pred_data", df_name)
@@ -444,6 +444,7 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
   out <- bind_rows(out)
   out[order(out[[5]], decreasing = FALSE), ]
 }
+
 
 
 
