@@ -1,12 +1,11 @@
-## list of function arguments
 gbt_survival_args <- as.list(formals(gbt_survival))
 
-## list of function inputs selected by user
+#list of function inputs selected by user
 gbt_survival_inputs <- reactive({
-  ## loop needed because reactive values don't allow single bracket indexing
+  #loop needed because reactive values don't allow single bracket indexing
   gbt_survival_args$data_filter <- if (input$show_filter) input$data_filter else ""
-  gbt_survival_args$data_arrange <- if (input$show_filter) input$data_arrange else ""
-  gbt_survival_args$data_rows <- if (input$show_filter) input$data_rows else ""
+  gbt_survival_args$arr <- if (input$show_filter) input$data_arrange else ""
+  gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
   for (i in r_drop(names(gbt_survival_args))) {
     gbt_survival_args[[i]] <- input[[paste0("gbt_survival_", i)]]
@@ -24,7 +23,7 @@ gbt_survival_pred_args <- as.list(if (exists("predict.gbt_survival")) {
 gbt_survival_pred_inputs <- reactive({
   # loop needed because reactive values don't allow single bracket indexing
   for (i in names(gbt_survival_pred_args)) {
-    gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival_", i)]]
+    gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival", i)]]
   }
 
   gbt_survival_pred_args$pred_cmd <- gbt_survival_pred_args$pred_data <- ""
@@ -41,36 +40,6 @@ gbt_survival_pred_inputs <- reactive({
     gbt_survival_pred_args$pred_data <- input$gbt_survival_pred_data
   }
   gbt_survival_pred_args
-})
-
-output$ui_gbt_survival_store_pred_name <- renderUI({
-  init <- state_init("gbt_survival_store_pred_name", "pred_gbt_survival")
-  textInput(
-    "gbt_survival_store_pred_name",
-    "Store predictions:",
-    init
-  )
-})
-observeEvent(input$gbt_survival_store_pred, {
-  req(!is.empty(input$gbt_survival_pred_data), pressed(input$gbt_survival_run))
-  pred <- .predict_gbt_survival()
-  if (is.null(pred)) {
-    return()
-  }
-  fixed <- fix_names(input$gbt_survival_store_pred_name)
-  updateTextInput(session, "gbt_survival_store_pred_name", value = fixed)
-  withProgress(
-    message = "Storing predictions", value = 1,
-    r_data[[input$gbt_survival_pred_data]] <- store(
-      r_data[[input$gbt_survival_pred_data]], pred,
-      name = fixed
-    )
-  )
-})
-
-## reset prediction and plot settings when the dataset changes
-observeEvent(input$dataset, {
-  updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
 })
 
 output$ui_gbt_survival_time_var <- renderUI({
@@ -111,8 +80,6 @@ output$ui_gbt_survival_evar <- renderUI({
   )
 })
 
-run_refresh(gbt_survival_args, "gbt_survival", tabs = "tabs_gbt_survival", label = "Estimate model", relabel = "Re-estimate model")
-
 output$ui_gbt_survival_wts <- renderUI({
   req(input$dataset)
   vars <- varnames()
@@ -125,6 +92,22 @@ output$ui_gbt_survival_wts <- renderUI({
     multiple = FALSE
   )
 })
+
+
+output$ui_gbt_survival_store_pred_name <- renderUI({
+  init <- state_init("gbt_survival_store_pred_name", "pred_gbt_survival")
+  textInput(
+    "gbt_survival_store_pred_name",
+    "Store predictions:",
+    init
+  )
+})
+
+## reset prediction and plot settings when the dataset changes
+observeEvent(input$dataset, {
+  updateSelectInput(session = session, inputId = "gbt_predict", selected = "none")
+})
+
 
 output$ui_gbt_survival <- renderUI({
   req(input$dataset)
@@ -227,37 +210,62 @@ output$ui_gbt_survival <- renderUI({
             rows = 3,
             placeholder = "Type a formula to set values for model variables (e.g., carat = 1; cut = 'Ideal') and press return"
           )
-
         ),
+        #conditionalPanel(
+        # condition = "input.gbt_survival_predict != 'none'",
+        #checkboxInput("gbt_pred_plot", "Plot predictions", state_init("gbt_pred_plot", FALSE)),
+        #conditionalPanel(
+        # "input.gbt_pred_plot == true",
+        # uiOutput("ui_gbt_predict_plot")
+        #)
+        #),
+        ## only show if full data is used for prediction
         conditionalPanel(
-          "input.gbt_predict == 'cmd' | input.gbt_predict == 'datacmd'",
-          returnTextAreaInput(
-            "gbt_pred_cmd", "Prediction command:",
-            value = state_init("gbt_pred_cmd", ""),
-            rows = 3,
-            placeholder = "Type a formula to set values for model variables (e.g., carat = 1; cut = 'Ideal') and press return"
+          "input.gbt_survival_predict == 'data' | input.gbt_survival_predict == 'datacmd'",
+          tags$table(
+            tags$td(uiOutput("ui_gbt_survival_store_pred_name")),
+            tags$td(actionButton("gbt_survival_store_pred", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
           )
         )
-
-      )
+      ),
+      #conditionalPanel(
+      #condition = "input.tabs_survival_gbt == 'Plot'",
+      #uiOutput("ui_gbt_plots"),
+      #conditionalPanel(
+      #condition = "input.gbt_plots == 'dashboard'",
+      #uiOutput("ui_gbt_nrobs")
+      #),
+      #conditionalPanel(
+      # condition = "input.gbt_plots == 'pdp' | input.gbt_plots == 'pred_plot'",
+      #uiOutput("ui_gbt_incl"),
+      #uiOutput("ui_gbt_incl_int")
+      #)
+      #),
+      # conditionalPanel(
+      #   condition = "input.tabs_gbt == 'Summary'",
+      #   tags$table(
+      #     tags$td(uiOutput("ui_gbt_store_res_name")),
+      #     tags$td(actionButton("gbt_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
+      #   )
+      # )
+    ),
+    help_and_report(
+      modal_title = "Gradient Boosted Trees",
+      fun_name = "gbt_survival",
+      help_file = inclMD(file.path(getOption("radiant.path.model"), "app/tools/help/gbt_survival.Rmd"))
     )
   )
 })
-
 gbt_survival_available <- reactive({
   req(input$dataset)
   if (not_available(input$gbt_survival_time_var)) {
     "This analysis requires a time variable. If these variables are not available, please select another dataset.\n\n" %>%
       suggest_data("survival_dataset_example")
-  } else if (not_available(input$gbt_survival_status_var)) {
-    "This analysis requires a status variable (event indicator). If these variables are not available, please select another dataset.\n\n" %>%
+  } else if (not_available(input$gbt_survival_status_var)) { "This analysis requires a status variable (event indicator). If these variables are not available, please select another dataset.\n\n" %>%
       suggest_data("survival_dataset_example")
-  } else if (not_available(input$gbt_survival_evar)) {
-    "Please select one or more explanatory variables.\n\n" %>%
+  } else if (not_available(input$gbt_survival_evar)) {"Please select one or more explanatory variables.\n\n" %>%
       suggest_data("survival_dataset_example")
-  } else {
-    "available"
-  }
+  } else { "available"}
 })
 
 .gbt_survival <- eventReactive(input$gbt_survival_run, {
@@ -309,13 +317,7 @@ gbt_survival_available <- reactive({
     gbti <- gbt_survival_pred_inputs()
     gbti$object <- .gbt_survival()
     gbti$envir <- r_data
-    # Ensure pred_data contains all required variables
-    required_vars <- c(input$gbt_survival_time_var, input$gbt_survival_status_var, input$gbt_survival_evar)
-    missing_vars <- setdiff(required_vars, colnames(gbti$pred_data))
-    if (length(missing_vars) > 0) {
-      gbti$pred_data <- cbind(gbti$pred_data, r_data()[missing_vars])
-    }
-    do.call(predict.gbt_survival, gbti)
+    do.call(predict, gbti)
   })
 })
 
@@ -324,12 +326,11 @@ gbt_survival_available <- reactive({
     (function(x) if (is.character(x)) cat(x, "\n") else print(x))
 })
 
-## output is called from the main radiant ui.R
 output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
 
-  ## separate tab for summary
+  ## three separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
     tabPanel(
@@ -345,32 +346,22 @@ output$gbt_survival <- renderUI({
       ),
       download_link("dl_gbt_survival_pred"), br(),
       verbatimTextOutput("predict_gbt_survival")
+    ),
+    tabPanel(
+      "Plot",
+      download_link("dlp_gbt_survival"),
+      plotOutput("plot_gbt", width = "100%", height = "100%")
     )
   )
 
   stat_tab_panel(
-    menu = "Model > Survival",
-    tool = "Gradient Boosted Trees for Survival Analysis",
+    menu = "Model > Trees",
+    tool = "Gradient Boosted Trees",
     tool_ui = "ui_gbt_survival",
     output_panels = gbt_survival_output_panels
   )
 })
 
-dl_gbt_survival_pred <- function(path) {
-  if (pressed(input$gbt_survival_run)) {
-    write.csv(.predict_gbt_survival(), file = path, row.names = FALSE)
-  } else {
-    cat("No output available. Press the Estimate button to generate results", file = path)
-  }
-}
-
-download_handler(
-  id = "dl_gbt_survival_pred",
-  fun = dl_gbt_survival_pred,
-  fn = function() paste0(input$dataset, "_gbt_survival_pred"),
-  type = "csv",
-  caption = "Save predictions"
-)
 
 observeEvent(input$gbt_survival_report, {
   r_info[["latest_screenshot"]] <- NULL
