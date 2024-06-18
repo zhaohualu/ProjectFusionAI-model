@@ -83,7 +83,7 @@ options(
         tabPanel("Random Forest", uiOutput("rf")),
         tabPanel("Gradient Boosted Trees", uiOutput("gbt")),
         # Add the Survival Analysis tab
-        tabPanel("Survival Analysis", uiOutput("survival"))
+        tabPanel("Survival Analysis", uiOutput("gbt_survival"))
       )
     )
 )
