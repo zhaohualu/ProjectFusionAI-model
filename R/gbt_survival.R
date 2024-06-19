@@ -246,60 +246,51 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #'
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
-                                 dec = 3, envir = parent.frame(), ...) {
+                                  dec = 3, envir = parent.frame(), ...) {
   if (is.character(object)) {
     return(object)
   }
-  
+
   # Ensure you have a name for the prediction dataset
   if (is.data.frame(pred_data)) {
     df_name <- deparse(substitute(pred_data))
+    # Add RowID to the prediction data
+    pred_data$RowID <- seq_len(nrow(pred_data))
   } else {
     df_name <- pred_data
   }
-  
-  # Extract explanatory variables used in the model
-  evar <- object$evar
-  
+
   pfun <- function(model, pred, se, conf_lev) {
-    # Ensure the factor levels in the prediction data are the same as in the data used for estimation
-    est_data <- model$model[, evar, drop = FALSE]
+    # Ensure the factor levels in the prediction data are the
+    # same as in the data used for estimation
+    est_data <- model$data
     for (i in colnames(pred)) {
       if (is.factor(est_data[[i]])) {
         pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
       }
     }
-    
-    # Explicitly construct the formula without using '.'
-    formula_str <- paste("~", paste(colnames(est_data), collapse = " + "), "- 1")
-    pred <- model.matrix(as.formula(formula_str), data = pred)
 
-    # Predict survival probabilities
-    pred_val <- try(predict(model, newdata = pred, type = "survival"), silent = TRUE)
-    if (!inherits(pred_val, "try-error")) {
-      pred_val <- as.data.frame(pred_val)
-      pred_val <- pred_val %>%
-        set_colnames("Prediction")
-    }
-    
-    pred_val
+    # Create the DMatrix for xgboost
+    pred_matrix <- xgb.DMatrix(data = as.matrix(pred))
+
+    # Predict the hazard function
+    pred_val <- predict(model, pred_matrix)
+
+    # Compute survival probabilities from hazard function
+    survival_prob <- exp(-pred_val)
+
+    # Convert predictions to data frame
+    pred_val_df <- data.frame(SurvivalProbability = survival_prob)
+
+    pred_val_df
   }
-  
-  # If pred_cmd is provided, create a new dataframe for predictions
-  if (!is.null(pred_cmd) && pred_cmd != "") {
-    pred_data <- eval(parse(text = paste0("expand.grid(", paste(pred_cmd, collapse = ","), ")")), envir)
-  }
-  
-  # Ensure pred_data contains all required variables
-  missing_vars <- setdiff(evar, colnames(pred_data))
-  if (length(missing_vars) > 0) {
-    stop(paste("The following variables are missing in pred_data:", paste(missing_vars, collapse = ", ")))
-  }
-  
-  # Generate predictions
-  predict_model(object, pfun, "gbt_survival.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
-  set_attr("radiant_pred_data", df_name)
+
+  pred_results <- predict_model(object, pfun, "gbt_survival.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir)
+
+  pred_results %>%
+    set_attr("radiant_pred_data", df_name)
 }
+
 
 #' Print method for predict.gbt_survival
 #'
