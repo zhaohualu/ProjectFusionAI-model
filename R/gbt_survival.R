@@ -250,51 +250,55 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   if (is.character(object)) {
     return(object)
   }
-
+  
   # Ensure you have a name for the prediction dataset
   if (is.data.frame(pred_data)) {
     df_name <- deparse(substitute(pred_data))
   } else {
     df_name <- pred_data
   }
-
+  
+  # Extract explanatory variables used in the model
+  evar <- object$evar
+  
   pfun <- function(model, pred, se, conf_lev) {
-    # Ensure the factor levels in the prediction data are the
-    # same as in the data used for estimation
-    est_data <- model$model[, model$evar, drop = FALSE]
+    # Ensure the factor levels in the prediction data are the same as in the data used for estimation
+    est_data <- model$model[, evar, drop = FALSE]
     for (i in colnames(pred)) {
       if (is.factor(est_data[[i]])) {
         pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
       }
     }
+    
     # Explicitly construct the formula without using '.'
     formula_str <- paste("~", paste(colnames(est_data), collapse = " + "), "- 1")
     pred <- model.matrix(as.formula(formula_str), data = pred)
 
     # Predict survival probabilities
-    pred_val <- try(sshhr(predict(model, newdata = pred)), silent = TRUE)
+    pred_val <- try(predict(model, newdata = pred, type = "survival"), silent = TRUE)
     if (!inherits(pred_val, "try-error")) {
-      pred_val %<>% as.data.frame(stringsAsFactors = FALSE) %>%
-        select(1) %>%
+      pred_val <- as.data.frame(pred_val)
+      pred_val <- pred_val %>%
         set_colnames("Prediction")
     }
-
+    
     pred_val
   }
-
-  # Create a new dataframe for predictions if pred_cmd is provided
- # if (!is.null(pred_cmd) && pred_cmd != "") {
-    #pred_data <- eval(parse(text = paste0("expand.grid(", paste(pred_cmd, collapse = ","), ")")), envir)
-  #}
-
+  
+  # If pred_cmd is provided, create a new dataframe for predictions
+  if (!is.null(pred_cmd) && pred_cmd != "") {
+    pred_data <- eval(parse(text = paste0("expand.grid(", paste(pred_cmd, collapse = ","), ")")), envir)
+  }
+  
   # Ensure pred_data contains all required variables
-  #missing_vars <- setdiff(object$evar, colnames(pred_data))
- # if (length(missing_vars) > 0) {
-   # stop(paste("The following variables are missing in pred_data:", paste(missing_vars, collapse = ", ")))
-  #}
-
+  missing_vars <- setdiff(evar, colnames(pred_data))
+  if (length(missing_vars) > 0) {
+    stop(paste("The following variables are missing in pred_data:", paste(missing_vars, collapse = ", ")))
+  }
+  
+  # Generate predictions
   predict_model(object, pfun, "gbt_survival.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
-    set_attr("radiant_pred_data", df_name)
+  set_attr("radiant_pred_data", df_name)
 }
 
 #' Print method for predict.gbt_survival
