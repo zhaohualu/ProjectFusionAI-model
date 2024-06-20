@@ -147,6 +147,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
 
   ## needed to work with prediction functions
   check <- ""
+  #as.list(result) %>% add_class(c("gbt_survival", "model"))
 
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 
@@ -225,6 +226,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat(paste0(ih, collapse = "\n"))
   }
 }
+
 
 #' Predict method for the gbt_survival function
 #'
@@ -438,6 +440,77 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
 
   out <- bind_rows(out)
   out[order(out[[5]], decreasing = FALSE), ]
+}
+
+#' Plot method for the gbt_survival function
+#'
+#' @param x Return value from \code{\link{gbt_survival}}
+#' @param plots A vector indicating which plots to generate ("km" for Kaplan-Meier)
+#' @param incl Variables to include in the Kaplan-Meier plot
+#' @param evar_values A list where each element is a vector of values for the corresponding variable in `incl` to be plotted
+#' @param ... Further arguments passed to or from other methods
+#'
+#' @examples
+#' result <- gbt_survival(
+#'   lung, "time", "status", c("age", "sex", "ph.ecog"),
+#'   early_stopping_rounds = 0, nthread = 1
+#' )
+#' plot(result, plots = c("km"), incl = c("age", "sex"), evar_values = list(age = c(60, 70), sex = c(1)))
+#' @export
+plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), ...) {
+  if (is.character(x) || !inherits(x$model, "xgb.Booster")) {
+    return(x)
+  }
+  plot_list <- list()
+  ncol <- 1
+
+  # Load necessary libraries
+  library(survival)
+  library(ggplot2)
+  library(patchwork)
+
+  # Extract data and model
+  dataset <- x$dataset
+  time_var <- x$time_var
+  status_var <- x$status_var
+
+  if ("km" %in% plots) {
+    # Kaplan-Meier Curve
+    for (evar in incl) {
+      if (!evar %in% colnames(dataset)) {
+        stop(paste("Variable", evar, "not found in the dataset."))
+      }
+
+      values <- evar_values[[evar]]
+      if (!is.null(values)) {
+        dataset <- dataset[dataset[[evar]] %in% values, ]
+      }
+
+      surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
+      fit <- survfit(surv_obj ~ dataset[[evar]])
+
+      ggsurvplot <- function(fit, evar, xlab = "Time", ylab = "Survival Probability", ...) {
+        surv_summary <- summary(fit)
+        df <- data.frame(time = surv_summary$time, surv = surv_summary$surv, strata = rep(surv_summary$strata, times = sapply(surv_summary$strata, length)))
+        g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
+          geom_step() +
+          labs(x = xlab, y = ylab) +
+          theme_minimal() +
+          scale_color_discrete(name = evar) +
+          theme(legend.title = element_text(size = 12), legend.text = element_text(size = 10))
+        g
+      }
+
+      plot_list[[evar]] <- ggsurvplot(fit, evar)
+    }
+    ncol <- max(ncol, 2)
+  }
+
+  if (length(plot_list) > 0) {
+    patchwork::wrap_plots(plot_list, ncol = ncol)
+  } else {
+    message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
+  }
 }
 
 
