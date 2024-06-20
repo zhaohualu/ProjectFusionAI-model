@@ -1,3 +1,8 @@
+gbt_survival_plots <- c(
+  "None" = "none",
+  "Kaplan Meier Plot" = "km"
+)
+
 gbt_survival_args <- as.list(formals(gbt_survival))
 
 #list of function inputs selected by user
@@ -17,6 +22,20 @@ gbt_survival_pred_args <- as.list(if (exists("predict.gbt_survival")) {
   formals(predict.gbt_survival)
 } else {
   formals(radiant.model:::predict.gbt_survival)
+})
+gbt_survival_plot_args <- as.list(if (exists("plot.gbt_survival")) {
+  formals(plot.gbt_survival)
+} else {
+  formals(radiant.model:::plot.gbt_survival)
+})
+
+## list of function inputs selected by user
+gbt_survival_plot_inputs <- reactive({
+  ## loop needed because reactive values don't allow single bracket indexing
+  for (i in names(gbt_survival_plot_args)) {
+    gbt_survival_plot_args[[i]] <- input[[paste0("gbt_survival", i)]]
+  }
+  gbt_survival_plot_args
 })
 
 # list of function inputs selected by user
@@ -39,6 +58,7 @@ gbt_survival_pred_inputs <- reactive({
       gsub("\"", "\'", .)
     gbt_survival_pred_args$pred_data <- input$gbt_survival_pred_data
   }
+  gbt_survival_pred_args$evar <- input$gbt_survival_evar
   gbt_survival_pred_args
 })
 
@@ -103,9 +123,30 @@ output$ui_gbt_survival_store_pred_name <- renderUI({
   )
 })
 
+output$ui_gbt_survival_plots <- renderUI({
+  req(input$dataset)
+  selectInput("gbt_survival_plots", "Plot type:", choices = c("None", "km"), selected = "None")
+})
+
+output$ui_incl <- renderUI({
+  req(input$dataset)
+  vars <- varnames()
+  selectInput("incl", "Variables to include in KM plot:", choices = vars, selected = vars[1], multiple = TRUE)
+})
+
+output$ui_evar_values <- renderUI({
+  req(input$dataset)
+  vars <- input$incl
+  lapply(vars, function(var) {
+    textInput(paste0("evar_values_", var), paste("Values for", var, ":"), value = "")
+  })
+})
+
 ## reset prediction and plot settings when the dataset changes
 observeEvent(input$dataset, {
-  updateSelectInput(session = session, inputId = "gbt_predict", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
+
 })
 
 
@@ -211,14 +252,14 @@ output$ui_gbt_survival <- renderUI({
             placeholder = "Type a formula to set values for model variables (e.g., carat = 1; cut = 'Ideal') and press return"
           )
         ),
-        #conditionalPanel(
-        # condition = "input.gbt_survival_predict != 'none'",
-        #checkboxInput("gbt_pred_plot", "Plot predictions", state_init("gbt_pred_plot", FALSE)),
-        #conditionalPanel(
-        # "input.gbt_pred_plot == true",
-        # uiOutput("ui_gbt_predict_plot")
-        #)
-        #),
+        conditionalPanel(
+          condition = "input.gbt_survival_predict != 'none'",
+          checkboxInput("gbt_survival_pred_plot", "Plot predictions", state_init("gbt_survival_pred_plot", FALSE)),
+          conditionalPanel(
+            "input.gbt_survival_pred_plot == true",
+            uiOutput("ui_gbt_survival_predict_plot")
+          )
+        ),
         ## only show if full data is used for prediction
         conditionalPanel(
           "input.gbt_survival_predict == 'data' | input.gbt_survival_predict == 'datacmd'",
@@ -228,26 +269,15 @@ output$ui_gbt_survival <- renderUI({
           )
         )
       ),
-      #conditionalPanel(
-      #condition = "input.tabs_survival_gbt == 'Plot'",
-      #uiOutput("ui_gbt_plots"),
-      #conditionalPanel(
-      #condition = "input.gbt_plots == 'dashboard'",
-      #uiOutput("ui_gbt_nrobs")
-      #),
-      #conditionalPanel(
-      # condition = "input.gbt_plots == 'pdp' | input.gbt_plots == 'pred_plot'",
-      #uiOutput("ui_gbt_incl"),
-      #uiOutput("ui_gbt_incl_int")
-      #)
-      #),
-      # conditionalPanel(
-      #   condition = "input.tabs_gbt == 'Summary'",
-      #   tags$table(
-      #     tags$td(uiOutput("ui_gbt_store_res_name")),
-      #     tags$td(actionButton("gbt_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
-      #   )
-      # )
+      conditionalPanel(
+        condition = "input.tabs_gbt_survival == 'Plot'",
+        uiOutput("ui_gbt_survival_plots"),
+        conditionalPanel(
+          condition = "input.gbt_survival_plots == 'km'",
+          uiOutput("ui_incl"),
+          uiOutput("ui_evar_values")
+        )
+      )
     ),
     help_and_report(
       modal_title = "Gradient Boosted Trees",
@@ -256,6 +286,7 @@ output$ui_gbt_survival <- renderUI({
     )
   )
 })
+
 gbt_survival_available <- reactive({
   req(input$dataset)
   if (not_available(input$gbt_survival_time_var)) {
@@ -326,6 +357,32 @@ gbt_survival_available <- reactive({
     (function(x) if (is.character(x)) cat(x, "\n") else print(x))
 })
 
+gbt_survival_plot <- reactive({
+  if (gbt_survival_available() != "available") {
+    return()
+  }
+  if (is.empty(input$plots, "none")) {
+    return()
+  }
+  nr_vars <- length(input$incl)
+  plot_height <- 500
+  plot_width <- 650
+  if ("km" %in% input$plots) {
+    plot_height <- max(250, ceiling(nr_vars / 2) * 250)
+  }
+  list(plot_width = plot_width, plot_height = plot_height)
+})
+
+gbt_survival_plot_width <- function() {
+  gbt_survival_plot() %>%
+    (function(x) if (is.list(x)) x$plot_width else 650)
+}
+
+gbt_survival_plot_height <- function() {
+  gbt_survival_plot() %>%
+    (function(x) if (is.list(x)) x$plot_height else 500)
+}
+
 output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
@@ -361,7 +418,60 @@ output$gbt_survival <- renderUI({
     output_panels = gbt_survival_output_panels
   )
 })
+.plot_gbt_survival <- reactive({
+  if (not_pressed(input$gbt_survival_run)) {
+    return("** Press the Estimate button to estimate the model **")
+  } else if (gbt_survival_available() != "available") {
+    return(gbt_survival_available())
+  } else if (is.empty(input$gbt_survival_plots, "none")) {
+    return("Please select a plot from the drop-down menu")
+  }
+  # pinp <- list(plots = input$gbt_plots, shiny = TRUE)
+  # if (input$gbt_plots == "dashboard") {
+  #   req(input$gbt_nrobs)
+  #   pinp <- c(pinp, nrobs = as_integer(input$gbt_nrobs))
+  # } else if (input$gbt_plots == "pdp") {
+  #   pinp <- c(pinp)
+  # }
+  pinp <- gbt_survival_plot_inputs()
+  pinp$shiny <- TRUE
+  check_for_pdp_pred_plots("gbt_survival")
+  withProgress(message = "Generating plots", value = 1, {
+    do.call(plot, c(list(x = .gbt_survival()), pinp))
+  })
+})
+output$plot_gbt_survival <- renderPlot({
+  gbt_surv <- gbt_survival_inputs()
+  km_plots <- input$plots
+  km_incl <- input$incl
+  km_evar_values <- lapply(input$incl, function(var) {
+    as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
+  })
+  names(km_evar_values) <- km_incl
 
+  if (is.null(km_plots) || !("km" %in% km_plots)) {
+    return(NULL)
+  }
+
+  gbt_surv$plots <- km_plots
+  gbt_surv$incl <- km_incl
+  gbt_surv$evar_values <- km_evar_values
+
+  result <- do.call(gbt_survival, gbt_surv)
+  plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values)
+})
+
+
+download_handler(
+  id = "dlp_gbt_survival",
+  fun = download_handler_plot,
+  fn = function() paste0(input$dataset, "_gbt_survival"),
+  type = "png",
+  caption = "Save Kaplan Meier plot",
+  plot = .plot_gbt_survival,
+  width = gbt_plot_width,
+  height = gbt_plot_height
+)
 
 observeEvent(input$gbt_survival_report, {
   r_info[["latest_screenshot"]] <- NULL
