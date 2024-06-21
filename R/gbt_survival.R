@@ -64,21 +64,21 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     return("Time or status variable contained in the set of explanatory variables.\nPlease update model specification." %>%
              add_class("gbt_survival"))
   }
-  
+
   vars <- c(time_var, status_var, evar)
-  
+
   if (is.empty(wts, "None")) {
     wts <- NULL
   } else if (is_string(wts)) {
     wtsname <- wts
     vars <- c(time_var, status_var, evar, wtsname)
   }
-  
+
   df_name <- if (is_string(dataset)) dataset else deparse(substitute(dataset))
   dataset <- get_data(dataset, vars, filt = data_filter, arr = arr, rows = rows, envir = envir) %>%
     mutate_if(is.Date, as.numeric)
   nr_obs <- nrow(dataset)
-  
+
   if (!is.empty(wts, "None")) {
     if (exists("wtsname")) {
       wts <- dataset[[wtsname]]
@@ -91,13 +91,13 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
       )
     }
   }
-  
+
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     return(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>%
              add_class("gbt_survival"))
   }
-  
+
   gbt_input <- list(
     max_depth = max_depth,
     learning_rate = learning_rate,
@@ -110,26 +110,26 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     objective = "survival:cox",
     eval_metric = "cox-nloglik"
   )
-  
+
   ## adding data
   dtx <- model.matrix(~ . - 1, data = dataset[, evar, drop = FALSE])
   #dty <- with(dataset, Surv(time = dataset[[time_var]], event = dataset[[status_var]]))
-  
+
   y_lower <- dataset[[time_var]]
   y_upper <- ifelse(dataset[[status_var]] == 1, dataset[[time_var]], Inf)
-  
+
   dtrain <- xgb.DMatrix(data = dtx, label = y_lower, label_upper_bound = y_upper)
-  
+
   ## Check that dty has the same length as the number of rows in dtx
   if (length(y_lower) != nrow(dtx)) {
     stop("The length of labels must equal to the number of rows in the input data")
   }
-  
+
   watchlist <- list(train = dtrain)
-  
+
   gbt_input$data <- dtrain
   gbt_input$watchlist <- watchlist
-  
+
   ## based on https://stackoverflow.com/questions/14324096/setting-seed-locally-not-globally-in-r/14324316#14324316
   seed <- gsub("[^0-9]", "", seed)
   if (!is.empty(seed)) {
@@ -139,20 +139,20 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     }
     set.seed(seed)
   }
-  
+
   ## capturing the iteration history
   output <- capture.output(model <<- do.call(xgboost::xgb.train, gbt_input))
-  
+
   model$model <- dataset
   ## gbt model object does not include the data by default
-  
+
   #rm(dataset, dty, dtx, rv) ## dataset not needed elsewhere
   gbt_input$data <- gbt_input$label <- NULL
-  
+
   ## needed to work with prediction functions
   check <- ""
   #as.list(result) %>% add_class(c("gbt_survival", "model"))
-  
+
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
 
@@ -499,7 +499,13 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           labs(x = xlab, y = ylab) +
           theme_minimal() +
           scale_color_discrete(name = evar) +
-          theme(legend.title = element_text(size = 12), legend.text = element_text(size = 10))
+          theme(
+            legend.title = element_text(size = 18, face = "bold"),
+            legend.text = element_text(size = 14),
+            axis.title = element_text(size = 18, face = "bold"),
+            axis.text = element_text(size = 14),
+            plot.title = element_text(size = 20)
+          )
         g
       }
 
@@ -514,6 +520,9 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
+
+
 
 
 
