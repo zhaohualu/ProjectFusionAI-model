@@ -1,6 +1,7 @@
 gbt_survival_plots <- c(
   "None" = "none",
-  "Kaplan Meier Plot" = "km"
+  "Kaplan Meier Plot" = "km",
+  "Permutation Importance" = "importance"
 )
 
 gbt_survival_args <- as.list(formals(gbt_survival))
@@ -127,7 +128,9 @@ output$ui_gbt_survival_plots <- renderUI({
 output$ui_incl <- renderUI({
   req(input$dataset)
   vars <- varnames()
-  selectInput("incl", "Variables to include in KM plot:", choices = vars, selected = vars[1], multiple = TRUE)
+  evar <- input$gbt_survival_evar  # Get evar from the input
+  selected_vars <- if (!is.null(evar) && length(evar) > 0) evar[1] else vars[1]
+  selectInput("incl", "Variables to include in KM plot:", choices = vars, selected = selected_vars, multiple = TRUE)
 })
 
 output$ui_evar_values <- renderUI({
@@ -142,6 +145,10 @@ output$ui_evar_values <- renderUI({
 observeEvent(input$dataset, {
   updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
   updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
+})
+
+output$ui_create_plot_button <- renderUI({
+  actionButton("create_plot", "Create plot", icon = icon("play"), class = "btn-primary")
 })
 
 output$ui_gbt_survival <- renderUI({
@@ -269,7 +276,13 @@ output$ui_gbt_survival <- renderUI({
         conditionalPanel(
           condition = "input.gbt_survival_plots == 'km'",
           uiOutput("ui_incl"),
-          uiOutput("ui_evar_values")
+          uiOutput("ui_evar_values"),
+          uiOutput("ui_create_plot_button")  # Add the create plot button
+
+        ),
+        conditionalPanel(
+          condition = "input.gbt_survival_plots = 'importance'",
+          uiOutput("ui_create_plot_button")
         )
       )
     ),
@@ -434,45 +447,56 @@ output$gbt_survival <- renderUI({
   })
 })
 
-output$plot_gbt_survival <- renderPlot({
-  dataset <- get(input$dataset, envir = r_data, inherits = TRUE)
-  req(dataset)
-  gbt_surv <- gbt_survival_inputs()
-  km_plots <- input$gbt_survival_plots
-  km_incl <- input$incl
-  km_evar_values <- lapply(input$incl, function(var) {
-    as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
+
+# Observe event to create the plot when the button is pressed
+observeEvent(input$create_plot, {
+  req(input$gbt_survival_plots)
+  req(input$incl)
+  req(input$gbt_survival_evar)
+
+  output$plot_gbt_survival <- renderPlot({
+    validate(
+      need(input$incl, "Please select variables to include in the KM plot."),
+      need(input$gbt_survival_evar, "Please select explanatory variables.")
+    )
+    dataset <- get(input$dataset, envir = r_data, inherits = TRUE)
+    req(dataset)
+    gbt_surv <- gbt_survival_inputs()
+    km_plots <- input$gbt_survival_plots
+    km_incl <- input$incl
+    km_evar_values <- lapply(input$incl, function(var) {
+      as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
   })
-  names(km_evar_values) <- km_incl
+    names(km_evar_values) <- km_incl
 
+    gbt_surv$plots <- km_plots
+    gbt_surv$incl <- km_incl
+    gbt_surv$evar_values <- km_evar_values
+    gbt_surv$dataset <- dataset
 
-  if (is.null(km_plots) || !("km" %in% km_plots)) {
-    return(NULL)
-  }
-
-  gbt_surv$plots <- km_plots
-  gbt_surv$incl <- km_incl
-  gbt_surv$evar_values <- km_evar_values
-  gbt_surv$dataset <- dataset
-
-  gbt_surv$time_var <- input$gbt_survival_time_var
-  gbt_surv$status_var <- input$gbt_survival_status_var
-  gbt_surv$evar <- input$gbt_survival_evar
-  gbt_surv$max_depth <- input$gbt_survival_max_depth
-  gbt_surv$learning_rate <- input$gbt_survival_learning_rate
-  gbt_surv$min_split_loss <- input$gbt_survival_min_split_loss
-  gbt_surv$min_child_weight <- input$gbt_survival_min_child_weight
-  gbt_surv$subsample <- input$gbt_survival_subsample
-  gbt_surv$nrounds <- input$gbt_survival_nrounds
-  gbt_surv$early_stopping_rounds <- input$gbt_survival_early_stopping_rounds
-  gbt_surv$wts <- input$gbt_survival_wts
-  gbt_surv$seed <- input$gbt_survival_seed
-  gbt_surv$data_filter <- gbt_surv$data_filter
-  gbt_surv$arr <- gbt_surv$arr
-  gbt_surv$rows <- gbt_surv$rows
-
-  result <- do.call(gbt_survival, gbt_surv)
-  plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values)
+    gbt_surv$time_var <- input$gbt_survival_time_var
+    gbt_surv$status_var <- input$gbt_survival_status_var
+    gbt_surv$evar <- input$gbt_survival_evar
+    gbt_surv$max_depth <- input$gbt_survival_max_depth
+    gbt_surv$learning_rate <- input$gbt_survival_learning_rate
+    gbt_surv$min_split_loss <- input$gbt_survival_min_split_loss
+    gbt_surv$min_child_weight <- input$gbt_survival_min_child_weight
+    gbt_surv$subsample <- input$gbt_survival_subsample
+    gbt_surv$nrounds <- input$gbt_survival_nrounds
+    gbt_surv$early_stopping_rounds <- input$gbt_survival_early_stopping_rounds
+    gbt_surv$wts <- input$gbt_survival_wts
+    gbt_surv$seed <- input$gbt_survival_seed
+    gbt_surv$data_filter <- gbt_surv$data_filter
+    gbt_surv$arr <- gbt_surv$arr
+    gbt_surv$rows <- gbt_surv$rows
+    if (km_plots == "km") {
+      result <- do.call(gbt_survival, gbt_surv)
+      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values)
+    } else if (km_plots == "importance") {
+      result <- do.call(gbt_survival, gbt_surv)
+      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values)
+    }
+  })
 })
 
 download_handler(
@@ -500,6 +524,7 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
 
 
 
