@@ -472,11 +472,13 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(survival)
   library(ggplot2)
   library(patchwork)
+  library(xgboost)
 
   # Extract data and model
   dataset <- x$dataset
   time_var <- x$time_var
   status_var <- x$status_var
+  model <- x$model
 
   if ("km" %in% plots) {
     # Kaplan-Meier Curve
@@ -514,6 +516,39 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       plot_list[[evar]] <- ggsurvplot(fit, evar)
     }
     ncol <- max(ncol, 2)
+  }
+
+  if ("importance" %in% plots) {
+    # Permutation Importance Plot using Cox model nloglik
+    calculate_cox_nloglik <- function(data, time_var, status_var, model, incl) {
+      surv_obj <- Surv(time = data[[time_var]], event = data[[status_var]])
+      fit <- coxph(surv_obj ~ ., data = data[, incl, drop = FALSE])
+      return(-fit$loglik[2])  # Return negative log-likelihood
+    }
+
+    baseline_nloglik <- calculate_cox_nloglik(dataset, time_var, status_var, model, incl)
+    importance <- data.frame(Variable = incl, Importance = 0)
+
+    for (evar in incl) {
+      permuted_data <- dataset
+      permuted_data[[evar]] <- sample(permuted_data[[evar]])
+      permuted_nloglik <- calculate_cox_nloglik(permuted_data, time_var, status_var, model, incl)
+      importance[importance$Variable == evar, "Importance"] <- permuted_nloglik - baseline_nloglik
+    }
+
+    importance_plot <- ggplot(importance, aes(x = reorder(Variable, Importance), y = Importance)) +
+      geom_bar(stat = "identity") +
+      coord_flip() +
+      labs(x = "Variable", y = "Permutation Importance (Cox nloglik)", title = "Permutation Importance using Cox nloglik") +
+      theme_minimal() +
+      theme(
+        axis.title = element_text(size = 18, face = "bold"),
+        axis.text = element_text(size = 14),
+        plot.title = element_text(size = 20)
+      )
+
+    plot_list[["importance"]] <- importance_plot
+    ncol <- max(ncol, 1)
   }
 
   if (length(plot_list) > 0) {
