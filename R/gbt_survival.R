@@ -54,31 +54,32 @@
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
-                         max_depth = 6, learning_rate = 0.3, min_split_loss = 0,
-                         min_child_weight = 1, subsample = 1,
-                         nrounds = 100, early_stopping_rounds = 10,
-                         nthread = 12, wts = "None", seed = NA,
-                         data_filter = "", arr = "", rows = NULL,
-                         envir = parent.frame(), ...) {
+                          max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
+                          min_child_weight = c(1), subsample = c(1),
+                          nrounds = c(100), early_stopping_rounds = 10,
+                          nthread = 12, wts = "None", seed = NA,
+                          data_filter = "", arr = "", rows = NULL,
+                          envir = parent.frame(), ...) {
+
   if (time_var %in% evar || status_var %in% evar) {
     return("Time or status variable contained in the set of explanatory variables.\nPlease update model specification." %>%
              add_class("gbt_survival"))
   }
-  
+
   vars <- c(time_var, status_var, evar)
-  
+
   if (is.empty(wts, "None")) {
     wts <- NULL
   } else if (is_string(wts)) {
     wtsname <- wts
     vars <- c(time_var, status_var, evar, wtsname)
   }
-  
+
   df_name <- if (is_string(dataset)) dataset else deparse(substitute(dataset))
   dataset <- get_data(dataset, vars, filt = data_filter, arr = arr, rows = rows, envir = envir) %>%
     mutate_if(is.Date, as.numeric)
   nr_obs <- nrow(dataset)
-  
+
   if (!is.empty(wts, "None")) {
     if (exists("wtsname")) {
       wts <- dataset[[wtsname]]
@@ -91,73 +92,96 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
       )
     }
   }
-  
+
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     return(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>%
              add_class("gbt_survival"))
   }
-  
+
   ## Create new column indicating time label with sign
   dataset <- dataset %>%
     mutate(new_time = dataset[[time_var]],
            new_time = ifelse(dataset[[status_var]] == 0, -new_time, new_time))
-  
-  gbt_input <- list(
-    max_depth = max_depth,
-    learning_rate = learning_rate,
-    min_split_loss = min_split_loss,
-    nrounds = nrounds,
-    min_child_weight = min_child_weight,
-    subsample = subsample,
-    early_stopping_rounds = early_stopping_rounds,
-    nthread = nthread,
-    objective = "survival:cox",
-    eval_metric = "cox-nloglik"
-  )
-  
-  ## adding data
-  dtx <- model.matrix(~ . - 1, data = dataset[, evar, drop = FALSE])
-  y_lower <- dataset$new_time
-  
-  dtrain <- xgb.DMatrix(data = dtx, label = y_lower)
-  
-  ## Check that dty has the same length as the number of rows in dtx
-  if (length(y_lower) != nrow(dtx)) {
-    stop("The length of labels must equal to the number of rows in the input data")
-  }
-  
-  watchlist <- list(train = dtrain)
-  
-  gbt_input$data <- dtrain
-  gbt_input$watchlist <- watchlist
-  
-  ## based on https://stackoverflow.com/questions/14324096/setting-seed-locally-not-globally-in-r/14324316#14324316
-  seed <- gsub("[^0-9]", "", seed)
-  if (!is.empty(seed)) {
-    if (exists(".Random.seed")) {
-      gseed <- .Random.seed
-      on.exit(.Random.seed <<- gseed)
+
+  best_model <- NULL
+  best_nloglik <- Inf
+  best_tuning_parameters <- list()
+
+  for (d in max_depth) {
+    for (lr in learning_rate) {
+      for (msl in min_split_loss) {
+        for (mcw in min_child_weight) {
+          for (ss in subsample) {
+            for (nr in nrounds) {
+
+              gbt_input <- list(
+                max_depth = d,
+                learning_rate = lr,
+                min_split_loss = msl,
+                min_child_weight = mcw,
+                subsample = ss,
+                nrounds = nr,
+                early_stopping_rounds = early_stopping_rounds,
+                nthread = nthread,
+                objective = "survival:cox",
+                eval_metric = "cox-nloglik",
+                verbose = 0
+              )
+
+              ## adding data
+              dtx <- model.matrix(~ . - 1, data = dataset[, evar, drop = FALSE])
+              y_lower <- dataset$new_time
+
+              dtrain <- xgb.DMatrix(data = dtx, label = y_lower)
+
+              ## Check that dty has the same length as the number of rows in dtx
+              if (length(y_lower) != nrow(dtx)) {
+                stop("The length of labels must equal to the number of rows in the input data")
+              }
+
+              watchlist <- list(train = dtrain)
+
+              gbt_input$data <- dtrain
+              gbt_input$watchlist <- watchlist
+
+              seed <- gsub("[^0-9]", "", seed)
+              if (!is.empty(seed)) {
+                if (exists(".Random.seed")) {
+                  gseed <- .Random.seed
+                  on.exit(.Random.seed <<- gseed)
+                }
+                set.seed(seed)
+              }
+
+              model <- do.call(xgboost::xgb.train, gbt_input)
+
+              nloglik <- model$best_score
+
+              if (!is.null(nloglik) && length(nloglik) > 0 && nloglik < best_nloglik) {
+                best_nloglik <- nloglik
+                best_model <- model
+                best_tuning_parameters <- list(
+                  max_depth = d,
+                  learning_rate = lr,
+                  min_split_loss = msl,
+                  min_child_weight = mcw,
+                  subsample = ss,
+                  nrounds = nr
+                )
+              }
+            }
+          }
+        }
+      }
     }
-    set.seed(seed)
   }
-  
-  ## capturing the iteration history
-  output <- capture.output(model <<- do.call(xgboost::xgb.train, gbt_input))
-  
-  model$model <- dataset
-  ## gbt model object does not include the data by default
-  
-  #rm(dataset, dty, dtx, rv) ## dataset not needed elsewhere
-  gbt_input$data <- gbt_input$label <- NULL
-  
-  ## needed to work with prediction functions
-  check <- ""
-  #as.list(result) %>% add_class(c("gbt_survival", "model"))
-  
+
+  best_model$model <- dataset
+  best_model$best_tuning_parameters <- best_tuning_parameters
+
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
-
 #' Summary method for the gbt_survival function
 #'
 #' @details See \url{https://radiant-rstats.github.io/docs/model/gbt.html} for an example in Radiant
@@ -199,12 +223,12 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
-  cat("Max depth            :", object$max_depth, "\n")
-  cat("Learning rate (eta)  :", object$learning_rate, "\n")
-  cat("Min split loss       :", object$min_split_loss, "\n")
-  cat("Min child weight     :", object$min_child_weight, "\n")
-  cat("Sub-sample           :", object$subsample, "\n")
-  cat("Nr of rounds (trees) :", object$nrounds, "\n")
+  cat("Max depth            :", paste(object$max_depth, collapse = " "), "\n")
+  cat("Learning rate (eta)  :", paste(object$learning_rate, collapse = " "), "\n")
+  cat("Min split loss       :", paste(object$min_split_loss, collapse = " "), "\n")
+  cat("Min child weight     :", paste(object$min_child_weight, collapse = " "), "\n")
+  cat("Sub-sample           :", paste(object$subsample, collapse = " "), "\n")
+  cat("Nr of rounds (trees) :", paste(object$nrounds, collapse = " "), "\n")
   cat("Early stopping rounds:", object$early_stopping_rounds, "\n")
   if (length(object$extra_args)) {
     extra_args <- deparse(object$extra_args) %>%
@@ -223,11 +247,26 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
 
+  # Extract best tuning parameters
+  best_tuning_params <- list(
+    max_depth = object$best_model$params$max_depth,
+    learning_rate = object$best_model$params$learning_rate,
+    min_split_loss = object$best_model$params$min_split_loss,
+    min_child_weight = object$best_model$params$min_child_weight,
+    subsample = object$best_model$params$subsample,
+    nrounds = object$best_model$params$nrounds
+  )
+
+  cat("\nBest Tuning Parameters:\n")
+  for (param in names(best_tuning_params)) {
+    cat(paste(param, ":", best_tuning_params[[param]], "\n"))
+  }
+
   if (isTRUE(prn)) {
-    cat("\nIteration history:\n\n")
-    ih <- object$output[c(-2, -3)]
-    if (length(ih) > 20) ih <- c(head(ih, 10), "...", tail(ih, 10))
-    cat(paste0(ih, collapse = "\n"))
+    # Output the training log-likelihood iterations
+    eval_log <- object$best_model$evaluation_log
+    cat("\nTrain Log-Likelihood Iterations:\n")
+    print(eval_log)
   }
 }
 
@@ -557,6 +596,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
