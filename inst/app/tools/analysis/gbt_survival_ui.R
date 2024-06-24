@@ -13,10 +13,15 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
   for (i in r_drop(names(gbt_survival_args))) {
-    gbt_survival_args[[i]] <- input[[paste0("gbt_survival_", i)]]
+    if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
+      gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
+    } else {
+      gbt_survival_args[[i]] <- input[[paste0("gbt_survival_", i)]]
+    }
   }
   gbt_survival_args
 })
+
 
 gbt_survival_pred_args <- as.list(if (exists("predict.gbt_survival")) {
   formals(predict.gbt_survival)
@@ -167,66 +172,22 @@ output$ui_gbt_survival <- renderUI({
         uiOutput("ui_gbt_survival_status_var"),
         uiOutput("ui_gbt_survival_evar"),
         uiOutput("ui_gbt_survival_wts"),
-        with(tags, table(
-          tr(
-            td(numericInput(
-              "gbt_survival_max_depth",
-              label = "Max depth:", min = 1, max = 20,
-              value = state_init("gbt_survival_max_depth", 6)
-            ), width = "50%"),
-            td(numericInput(
-              "gbt_survival_learning_rate",
-              label = "Learning rate:", min = 0, max = 1, step = 0.1,
-              value = state_init("gbt_survival_learning_rate", 0.3)
-            ), width = "50%")
-          ),
-          width = "100%"
-        )),
-        with(tags, table(
-          tr(
-            td(numericInput(
-              "gbt_survival_min_split_loss",
-              label = "Min split loss:", min = 0.00001, max = 1000,
-              step = 0.01, value = state_init("gbt_survival_min_split_loss", 0)
-            ), width = "50%"),
-            td(numericInput(
-              "gbt_survival_min_child_weight",
-              label = "Min child weight:", min = 1, max = 100,
-              step = 1, value = state_init("gbt_survival_min_child_weight", 1)
-            ), width = "50%")
-          ),
-          width = "100%"
-        )),
-        with(tags, table(
-          tr(
-            td(numericInput(
-              "gbt_survival_subsample",
-              label = "Sub-sample:", min = 0.1, max = 1,
-              value = state_init("gbt_survival_subsample", 1)
-            ), width = "50%"),
-            td(numericInput(
-              "gbt_survival_nrounds",
-              label = "# rounds:",
-              value = state_init("gbt_survival_nrounds", 100)
-            ), width = "50%")
-          ),
-          width = "100%"
-        )),
-        with(tags, table(
-          tr(
-            td(numericInput(
-              "gbt_survival_early_stopping_rounds",
-              label = "Early stopping:", min = 1, max = 10,
-              step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
-            ), width = "50%"),
-            td(numericInput(
-              "gbt_survival_seed",
-              label = "Seed:",
-              value = state_init("gbt_survival_seed", 1234)
-            ), width = "50%")
-          ),
-          width = "100%"
-        ))
+        textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
+        textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
+        textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
+        textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
+        textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
+        textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
+        numericInput(
+          "gbt_survival_early_stopping_rounds",
+          label = "Early stopping:", min = 1, max = 10,
+          step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
+        ),
+        numericInput(
+          "gbt_survival_seed",
+          label = "Seed:",
+          value = state_init("gbt_survival_seed", 1234)
+        )
       ),
       conditionalPanel(
         condition = "input.tabs_gbt_survival == 'Predict'",
@@ -278,7 +239,6 @@ output$ui_gbt_survival <- renderUI({
           uiOutput("ui_incl"),
           uiOutput("ui_evar_values"),
           uiOutput("ui_create_plot_button")  # Add the create plot button
-
         ),
         conditionalPanel(
           condition = "input.gbt_survival_plots = 'importance'",
@@ -293,6 +253,7 @@ output$ui_gbt_survival <- renderUI({
     )
   )
 })
+
 
 gbt_survival_available <- reactive({
   req(input$dataset)
