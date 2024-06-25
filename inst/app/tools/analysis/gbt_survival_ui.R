@@ -12,6 +12,7 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$arr <- if (input$show_filter) input$data_arrange else ""
   gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
+  gbt_survival_args$metric <- input$gbt_survival_metric
   for (i in r_drop(names(gbt_survival_args))) {
     if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
@@ -21,7 +22,6 @@ gbt_survival_inputs <- reactive({
   }
   gbt_survival_args
 })
-
 
 gbt_survival_pred_args <- as.list(if (exists("predict.gbt_survival")) {
   formals(predict.gbt_survival)
@@ -159,15 +159,15 @@ output$ui_create_plot_button <- renderUI({
 output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
+    wellPanel(
+      selectInput("gbt_survival_metric", "Evaluation metric:",
+                  choices = list("Negative Log-Likelihood" = "nloglik", "Concordance Index" = "cindex"),
+                  selected = "nloglik"),
+      actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
+    ),
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Summary'",
       wellPanel(
-        actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
-      )
-    ),
-    wellPanel(
-      conditionalPanel(
-        condition = "input.tabs_gbt_survival == 'Summary'",
         uiOutput("ui_gbt_survival_time_var"),
         uiOutput("ui_gbt_survival_status_var"),
         uiOutput("ui_gbt_survival_evar"),
@@ -241,7 +241,7 @@ output$ui_gbt_survival <- renderUI({
           uiOutput("ui_create_plot_button")  # Add the create plot button
         ),
         conditionalPanel(
-          condition = "input.gbt_survival_plots = 'importance'",
+          condition = "input.gbt_survival_plots == 'importance'",
           uiOutput("ui_create_plot_button")
         )
       )
@@ -253,7 +253,6 @@ output$ui_gbt_survival <- renderUI({
     )
   )
 })
-
 
 gbt_survival_available <- reactive({
   req(input$dataset)
@@ -427,7 +426,7 @@ observeEvent(input$create_plot, {
     km_incl <- input$incl
     km_evar_values <- lapply(input$incl, function(var) {
       as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
-  })
+    })
     names(km_evar_values) <- km_incl
 
     gbt_surv$plots <- km_plots
