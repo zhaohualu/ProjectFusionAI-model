@@ -17,6 +17,7 @@
 #' @param nthread Number of parallel threads to use. Defaults to 12 if available
 #' @param wts Weights to use in estimation
 #' @param seed Random seed to use as the starting point
+#' @param metric Metric used to calculate survival outcome ("nloglik" or "cindex")
 #' @param data_filter Expression entered in, e.g., Data > View to filter the dataset in Radiant. The expression should be a string (e.g., "price > 10000")
 #' @param arr Expression to arrange (sort) the data on (e.g., "color, desc(price)")
 #' @param rows Rows to select from the specified dataset
@@ -47,19 +48,28 @@
 #' @seealso \code{\link{plot.gbt}} to plot results
 #' @seealso \code{\link{predict.gbt}} for prediction
 #'
-#' @importFrom xgboost xgboost xgb.importance
+#' @importFrom xgboost xgboost xgb.importance xgb.DMatrix xgb.train
 #' @importFrom lubridate is.Date
 #' @importFrom survival survfit survdiff Surv
 #' @importFrom broom tidy
+#' @importFrom survcomp concordance.index
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
-                          max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
-                          min_child_weight = c(1), subsample = c(1),
-                          nrounds = c(100), early_stopping_rounds = 10,
-                          nthread = 12, wts = "None", seed = NA,
-                          data_filter = "", arr = "", rows = NULL,
-                          envir = parent.frame(), ...) {
+                         max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
+                         min_child_weight = c(1), subsample = c(1),
+                         nrounds = c(100), early_stopping_rounds = 10,
+                         nthread = 12, wts = "None", seed = 1234,
+                         metric = "nloglik", data_filter = "", arr = "", rows = NULL,
+                         envir = parent.frame(), ...) {
+  # Check and install survcomp package if not already installed
+  if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+  }
+  if (!requireNamespace("survcomp", quietly = TRUE)) {
+    BiocManager::install("survcomp")
+  }
+  library(survcomp)
 
   if (time_var %in% evar || status_var %in% evar) {
     return("Time or status variable contained in the set of explanatory variables.\nPlease update model specification." %>%
@@ -104,9 +114,15 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     mutate(new_time = dataset[[time_var]],
            new_time = ifelse(dataset[[status_var]] == 0, -new_time, new_time))
 
+  set.seed(seed)
+  train_idx <- sample(seq_len(nrow(dataset)), size = 0.8 * nrow(dataset))
+  train_data <- dataset[train_idx, ]
+  eval_data <- dataset[-train_idx, ]
+
   best_model <- NULL
-  best_nloglik <- Inf
+  best_metric_value <- if (metric == "nloglik") Inf else -Inf
   best_tuning_parameters <- list()
+  eval_log <- data.frame(iter = integer(), value = numeric())
 
   for (d in max_depth) {
     for (lr in learning_rate) {
@@ -130,8 +146,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
               )
 
               ## adding data
-              dtx <- model.matrix(~ . - 1, data = dataset[, evar, drop = FALSE])
-              y_lower <- dataset$new_time
+              dtx <- model.matrix(~ . - 1, data = train_data[, evar, drop = FALSE])
+              y_lower <- train_data$new_time
 
               dtrain <- xgb.DMatrix(data = dtx, label = y_lower)
 
@@ -156,19 +172,51 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
 
               model <- do.call(xgboost::xgb.train, gbt_input)
 
-              nloglik <- model$best_score
+              if (metric == "nloglik") {
+                metric_value <- model$best_score
+                if (!is.null(metric_value) && length(metric_value) > 0 && metric_value < best_metric_value) {
+                  best_metric_value <- metric_value
+                  best_model <- model
+                  best_tuning_parameters <- list(
+                    max_depth = d,
+                    learning_rate = lr,
+                    min_split_loss = msl,
+                    min_child_weight = mcw,
+                    subsample = ss,
+                    nrounds = nr
+                  )
+                  eval_log <- model$evaluation_log
+                  best_model$model <- dataset
+                  best_model$best_tuning_parameters <- best_tuning_parameters
+                  best_model$metric <- metric
+                  best_model$best_metric_value <- best_metric_value
+                  best_model$evaluation_log <- eval_log
 
-              if (!is.null(nloglik) && length(nloglik) > 0 && nloglik < best_nloglik) {
-                best_nloglik <- nloglik
-                best_model <- model
-                best_tuning_parameters <- list(
-                  max_depth = d,
-                  learning_rate = lr,
-                  min_split_loss = msl,
-                  min_child_weight = mcw,
-                  subsample = ss,
-                  nrounds = nr
-                )
+                }
+              } else if (metric == "cindex") {
+                library(survcomp)
+                pred <- predict(model, xgb.DMatrix(data = model.matrix(~ . - 1, data = eval_data[, evar, drop = FALSE])))
+                surv_data <- data.frame(time = eval_data[[time_var]], status = eval_data[[status_var]], pred = pred)
+                cindex_value <- concordance.index(surv_data$pred, surv_data$time, surv_data$status)$c.index
+                if (!is.null(cindex_value) && length(cindex_value) > 0 && cindex_value > best_metric_value) {
+                  best_metric_value <- cindex_value
+                  best_model <- model
+                  best_tuning_parameters <- list(
+                    max_depth = d,
+                    learning_rate = lr,
+                    min_split_loss = msl,
+                    min_child_weight = mcw,
+                    subsample = ss,
+                    nrounds = nr
+                  )
+                  best_model$model <- dataset
+                  best_model$best_tuning_parameters <- best_tuning_parameters
+                  best_model$metric <- metric
+                  best_model$best_metric_value <- best_metric_value
+
+                }
+                eval_log <- rbind(eval_log, data.frame(iter = 1:nr, value = rep(cindex_value, nr)))
+                best_model$evaluation_log <- eval_log
               }
             }
           }
@@ -176,9 +224,6 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
       }
     }
   }
-
-  best_model$model <- dataset
-  best_model$best_tuning_parameters <- best_tuning_parameters
 
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
@@ -262,13 +307,25 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat(paste(param, ":", best_tuning_params[[param]], "\n"))
   }
 
-  if (isTRUE(prn)) {
-    # Output the training log-likelihood iterations
-    eval_log <- object$best_model$evaluation_log
-    cat("\nTrain Log-Likelihood Iterations:\n")
-    print(eval_log)
+  if (object$metric == "nloglik") {
+    cat("\nBest Train Negative Log-Likelihood:", object$best_metric_value, "\n")
+    if (isTRUE(prn)) {
+      # Output the training log-likelihood iterations
+      eval_log <- object$best_model$evaluation_log
+      cat("\nTrain Log Iterations:\n")
+      print(eval_log)
+    }
+  } else if (object$metric == "cindex") {
+    cat("\nBest Train Concordance Index:", object$best_metric_value, "\n")
+    if (isTRUE(prn)) {
+      # Output the training C-index iterations
+      eval_log <- object$best_model$evaluation_log
+      cat("\nTrain C-index Iterations:\n")
+      print(head(eval_log, 100))
+    }
   }
 }
+
 
 
 #' Predict method for the gbt_survival function
@@ -308,7 +365,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   pfun <- function(model, pred, se, conf_lev) {
     # Ensure the factor levels in the prediction data are the
     # same as in the data used for estimation
-    est_data <- model$data
+    est_data <- model$model
     for (i in colnames(pred)) {
       if (is.factor(est_data[[i]])) {
         pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
@@ -596,6 +653,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
