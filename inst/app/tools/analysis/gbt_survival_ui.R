@@ -47,7 +47,7 @@ gbt_survival_pred_inputs <- reactive({
   for (i in names(gbt_survival_pred_args)) {
     gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival_", i)]]
   }
-
+  
   gbt_survival_pred_args$pred_cmd <- gbt_survival_pred_args$pred_data <- ""
   if (input$gbt_survival_predict == "cmd") {
     gbt_survival_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_survival_pred_cmd) %>%
@@ -159,14 +159,14 @@ output$ui_create_plot_button <- renderUI({
 output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
-    wellPanel(
-      selectInput("gbt_survival_metric", "Evaluation metric:",
-                  choices = list("Negative Log-Likelihood" = "nloglik", "Concordance Index" = "cindex"),
-                  selected = "nloglik"),
-      actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
-    ),
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Summary'",
+      wellPanel(
+        selectInput("gbt_survival_metric", "Evaluation metric:",
+                    choices = list("Negative Log-Likelihood" = "nloglik", "Concordance Index" = "cindex"),
+                    selected = "nloglik"),
+        actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
+      ),
       wellPanel(
         uiOutput("ui_gbt_survival_time_var"),
         uiOutput("ui_gbt_survival_status_var"),
@@ -188,9 +188,11 @@ output$ui_gbt_survival <- renderUI({
           label = "Seed:",
           value = state_init("gbt_survival_seed", 1234)
         )
-      ),
-      conditionalPanel(
-        condition = "input.tabs_gbt_survival == 'Predict'",
+      )
+    ),
+    conditionalPanel(
+      condition = "input.tabs_gbt_survival == 'Predict'",
+      wellPanel(
         selectInput(
           "gbt_survival_predict",
           label = "Prediction input type:", reg_predict,
@@ -230,14 +232,16 @@ output$ui_gbt_survival <- renderUI({
             tags$td(actionButton("gbt_survival_store_pred", "Store", icon = icon("plus")), class = "top")
           )
         )
-      ),
-      conditionalPanel(
-        condition = "input.tabs_gbt_survival == 'Plot'",
+      )
+    ),
+    conditionalPanel(
+      condition = "input.tabs_gbt_survival == 'Plot'",
+      wellPanel(
         uiOutput("ui_gbt_survival_plots"),
+        uiOutput("ui_incl"),  # Ensure this is always shown
+        uiOutput("ui_evar_values"),  # Ensure this is always shown
         conditionalPanel(
           condition = "input.gbt_survival_plots == 'km'",
-          uiOutput("ui_incl"),
-          uiOutput("ui_evar_values"),
           uiOutput("ui_create_plot_button")  # Add the create plot button
         ),
         conditionalPanel(
@@ -280,7 +284,7 @@ gbt_survival_available <- reactive({
   if (is.empty(gbti$subsample)) gbti$subsample <- 1
   if (is.empty(gbti$nrounds)) gbti$nrounds <- 100
   if (is.empty(gbti$early_stopping_rounds)) gbti["early_stopping_rounds"] <- list(NULL)
-
+  
   withProgress(
     message = "Estimating model", value = 1,
     do.call(gbt_survival, gbti)
@@ -307,14 +311,14 @@ gbt_survival_available <- reactive({
   if (is.empty(input$gbt_survival_predict, "none")) {
     return("** Select prediction input **")
   }
-
+  
   if ((input$gbt_survival_predict == "data" || input$gbt_survival_predict == "datacmd") && is.empty(input$gbt_survival_pred_data)) {
     return("** Select data for prediction **")
   }
   if (input$gbt_survival_predict == "cmd" && is.empty(input$gbt_survival_pred_cmd)) {
     return("** Enter prediction commands **")
   }
-
+  
   withProgress(message = "Generating predictions", value = 1, {
     gbti <- gbt_survival_pred_inputs()
     gbti$object <- .gbt_survival()
@@ -357,7 +361,7 @@ gbt_survival_plot_height <- function() {
 output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
-
+  
   # three separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
@@ -381,7 +385,7 @@ output$gbt_survival <- renderUI({
       plotOutput("plot_gbt_survival", width = "1900px", height = "800px")
     )
   )
-
+  
   stat_tab_panel(
     menu = "Model > Trees",
     tool = "Gradient Boosted Trees",
@@ -398,7 +402,7 @@ output$gbt_survival <- renderUI({
   } else if (is.empty(input$gbt_survival_plots, "none")) {
     return("Please select a plot from the drop-down menu")
   }
-
+  
   pinp <- gbt_survival_plot_inputs()
   pinp$shiny <- TRUE
   check_for_pdp_pred_plots("gbt_survival")
@@ -407,13 +411,12 @@ output$gbt_survival <- renderUI({
   })
 })
 
-
 # Observe event to create the plot when the button is pressed
 observeEvent(input$create_plot, {
   req(input$gbt_survival_plots)
   req(input$incl)
   req(input$gbt_survival_evar)
-
+  
   output$plot_gbt_survival <- renderPlot({
     validate(
       need(input$incl, "Please select variables to include in the KM plot."),
@@ -428,27 +431,28 @@ observeEvent(input$create_plot, {
       as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
     })
     names(km_evar_values) <- km_incl
-
+    
     gbt_surv$plots <- km_plots
     gbt_surv$incl <- km_incl
     gbt_surv$evar_values <- km_evar_values
     gbt_surv$dataset <- dataset
-
+    
     gbt_surv$time_var <- input$gbt_survival_time_var
     gbt_surv$status_var <- input$gbt_survival_status_var
     gbt_surv$evar <- input$gbt_survival_evar
-    gbt_surv$max_depth <- input$gbt_survival_max_depth
-    gbt_surv$learning_rate <- input$gbt_survival_learning_rate
-    gbt_surv$min_split_loss <- input$gbt_survival_min_split_loss
-    gbt_surv$min_child_weight <- input$gbt_survival_min_child_weight
-    gbt_surv$subsample <- input$gbt_survival_subsample
-    gbt_surv$nrounds <- input$gbt_survival_nrounds
-    gbt_surv$early_stopping_rounds <- input$gbt_survival_early_stopping_rounds
-    gbt_surv$wts <- input$gbt_survival_wts
-    gbt_surv$seed <- input$gbt_survival_seed
+    gbt_surv$max_depth <- as.numeric(gbt_surv$max_depth)
+    gbt_surv$learning_rate <- as.numeric(gbt_surv$learning_rate)
+    gbt_surv$min_split_loss <- as.numeric(gbt_surv$min_split_loss)
+    gbt_surv$min_child_weight <- as.numeric(gbt_surv$min_child_weight)
+    gbt_surv$subsample <- as.numeric(gbt_surv$subsample)
+    gbt_surv$nrounds <- as.numeric(gbt_surv$nrounds)
+    gbt_surv$early_stopping_rounds <- as.numeric(gbt_surv$early_stopping_rounds)
+    gbt_surv$wts <- as.numeric(gbt_surv$wts)
+    gbt_surv$seed <- as.numeric(gbt_surv$seed)
     gbt_surv$data_filter <- gbt_surv$data_filter
     gbt_surv$arr <- gbt_surv$arr
     gbt_surv$rows <- gbt_surv$rows
+    
     if (km_plots == "km") {
       result <- do.call(gbt_survival, gbt_surv)
       plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values)
