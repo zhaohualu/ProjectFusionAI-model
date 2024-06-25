@@ -594,8 +594,20 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       ggsurvplot <- function(fit, evar, xlab = "Time", ylab = "Survival Probability", ...) {
         surv_summary <- summary(fit)
         df <- data.frame(time = surv_summary$time, surv = surv_summary$surv, strata = rep(surv_summary$strata, times = sapply(surv_summary$strata, length)))
+
+        # Calculate the time where survival probability is closest to 0.5
+        df_split <- split(df, df$strata)
+        vline_data <- data.frame(time = numeric(0), strata = character(0))
+        for (stratum in names(df_split)) {
+          strata_df <- df_split[[stratum]]
+          closest_idx <- which.min(abs(strata_df$surv - 0.5))
+          vline_data <- rbind(vline_data, data.frame(time = strata_df$time[closest_idx], strata = stratum))
+        }
+
         g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
           geom_step() +
+          geom_hline(yintercept = 0.5, linetype = "dotted") + # Add horizontal dotted line at 0.5
+          geom_vline(data = vline_data, aes(xintercept = time, color = strata), linetype = "dotted") + # Add vertical dotted line at the closest time to 0.5 survival
           labs(x = xlab, y = ylab) +
           theme_minimal() +
           scale_color_discrete(name = evar) +
@@ -653,6 +665,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
+
 
 
 
