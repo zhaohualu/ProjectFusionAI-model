@@ -17,11 +17,11 @@
 #' @param nthread Number of parallel threads to use. Defaults to 12 if available
 #' @param wts Weights to use in estimation
 #' @param seed Random seed to use as the starting point
-#' @param metric Metric used to calculate survival outcome ("nloglik" or "cindex")
 #' @param data_filter Expression entered in, e.g., Data > View to filter the dataset in Radiant. The expression should be a string (e.g., "price > 10000")
 #' @param arr Expression to arrange (sort) the data on (e.g., "color, desc(price)")
 #' @param rows Rows to select from the specified dataset
 #' @param envir Environment to extract data from
+#' @param cox_regression Logical, if TRUE perform Cox regression modeling
 #' @param ... Further arguments to pass to xgboost
 #'
 #' @return A list with all variables defined in gbt as an object of class gbt
@@ -33,15 +33,11 @@
 #' }
 #' gbt_survival(
 #'   lung, "time", "status", c("age", "sex", "ph.ecog"), lev = "Yes",
-#'   early_stopping_rounds = 0, nthread = 1
+#'   early_stopping_rounds = 0, nthread = 1, cox_regression = TRUE
 #' ) %>% summary()
 #' gbt_survival(
 #'   lung, "time", "status", c("age", "sex", "ph.ecog"),
-#'   early_stopping_rounds = 0, nthread = 1
-#' ) %>% str()
-#' gbt_survival(
-#'   lung, "time", "status", c("age", "sex", "ph.ecog"),
-#'   eval_metric = paste0("error@", 0.5 / 6), nthread = 1
+#'   early_stopping_rounds = 0, nthread = 1, cox_regression = TRUE
 #' ) %>% str()
 #'
 #' @seealso \code{\link{summary.gbt}} to summarize results
@@ -50,7 +46,7 @@
 #'
 #' @importFrom xgboost xgboost xgb.importance xgb.DMatrix xgb.train
 #' @importFrom lubridate is.Date
-#' @importFrom survival survfit survdiff Surv
+#' @importFrom survival survfit survdiff Surv coxph
 #' @importFrom broom tidy
 #' @importFrom survcomp concordance.index
 #'
@@ -60,8 +56,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                          min_child_weight = c(1), subsample = c(1),
                          nrounds = c(100), early_stopping_rounds = 10,
                          nthread = 12, wts = "None", seed = 1234,
-                         metric = "nloglik", data_filter = "", arr = "", rows = NULL,
-                         envir = parent.frame(), ...) {
+                         data_filter = "", arr = "", rows = NULL,
+                         envir = parent.frame(), cox_regression = FALSE, ...) {
   # Check and install survcomp package if not already installed
   if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
@@ -120,7 +116,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   eval_data <- dataset[-train_idx, ]
 
   best_model <- NULL
-  best_metric_value <- if (metric == "nloglik") Inf else -Inf
+  best_metric_value <- Inf
   best_tuning_parameters <- list()
   eval_log <- data.frame(iter = integer(), value = numeric())
 
@@ -172,50 +168,22 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
 
               model <- do.call(xgboost::xgb.train, gbt_input)
 
-              if (metric == "nloglik") {
-                metric_value <- model$best_score
-                if (!is.null(metric_value) && length(metric_value) > 0 && metric_value < best_metric_value) {
-                  best_metric_value <- metric_value
-                  best_model <- model
-                  best_tuning_parameters <- list(
-                    max_depth = d,
-                    learning_rate = lr,
-                    min_split_loss = msl,
-                    min_child_weight = mcw,
-                    subsample = ss,
-                    nrounds = nr
-                  )
-                  eval_log <- model$evaluation_log
-                  best_model$model <- dataset
-                  best_model$best_tuning_parameters <- best_tuning_parameters
-                  best_model$metric <- metric
-                  best_model$best_metric_value <- best_metric_value
-                  best_model$evaluation_log <- eval_log
-
-                }
-              } else if (metric == "cindex") {
-                library(survcomp)
-                pred <- predict(model, xgb.DMatrix(data = model.matrix(~ . - 1, data = eval_data[, evar, drop = FALSE])))
-                surv_data <- data.frame(time = eval_data[[time_var]], status = eval_data[[status_var]], pred = pred)
-                cindex_value <- concordance.index(surv_data$pred, surv_data$time, surv_data$status)$c.index
-                if (!is.null(cindex_value) && length(cindex_value) > 0 && cindex_value > best_metric_value) {
-                  best_metric_value <- cindex_value
-                  best_model <- model
-                  best_tuning_parameters <- list(
-                    max_depth = d,
-                    learning_rate = lr,
-                    min_split_loss = msl,
-                    min_child_weight = mcw,
-                    subsample = ss,
-                    nrounds = nr
-                  )
-                  best_model$model <- dataset
-                  best_model$best_tuning_parameters <- best_tuning_parameters
-                  best_model$metric <- metric
-                  best_model$best_metric_value <- best_metric_value
-
-                }
-                eval_log <- rbind(eval_log, data.frame(iter = 1:nr, value = rep(cindex_value, nr)))
+              metric_value <- model$best_score
+              if (!is.null(metric_value) && length(metric_value) > 0 && metric_value < best_metric_value) {
+                best_metric_value <- metric_value
+                best_model <- model
+                best_tuning_parameters <- list(
+                  max_depth = d,
+                  learning_rate = lr,
+                  min_split_loss = msl,
+                  min_child_weight = mcw,
+                  subsample = ss,
+                  nrounds = nr
+                )
+                eval_log <- model$evaluation_log
+                best_model$model <- dataset
+                best_model$best_tuning_parameters <- best_tuning_parameters
+                best_model$best_metric_value <- best_metric_value
                 best_model$evaluation_log <- eval_log
               }
             }
@@ -223,6 +191,20 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
         }
       }
     }
+  }
+
+  if (cox_regression) {
+    # Perform Cox regression modeling
+    formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
+    cox_model <- coxph(formula, data = dataset)
+
+    # Calculate the concordance index (C-index) for the Cox model
+    cox_pred <- predict(cox_model, newdata = eval_data, type = "risk")
+    c_index <- concordance.index(cox_pred, eval_data[[time_var]], eval_data[[status_var]])$c.index
+
+    # Add Cox regression results to the output
+    best_model$cox_model <- cox_model
+    best_model$cox_c_index <- c_index
   }
 
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
@@ -238,7 +220,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
 #' @examples
 #' result <- gbt_survival(
 #'   lung, "time", "status", c("age", "sex", "ph.ecog"),
-#'   early_stopping_rounds = 0, nthread = 1
+#'   early_stopping_rounds = 0, nthread = 1, cox_regression = TRUE
 #' )
 #' summary(result)
 #' @seealso \code{\link{gbt_survival}} to generate results
@@ -292,22 +274,36 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
 
-  # Extract best tuning parameters
-  best_tuning_params <- list(
-    max_depth = object$best_model$params$max_depth,
-    learning_rate = object$best_model$params$learning_rate,
-    min_split_loss = object$best_model$params$min_split_loss,
-    min_child_weight = object$best_model$params$min_child_weight,
-    subsample = object$best_model$params$subsample,
-    nrounds = object$best_model$params$nrounds
-  )
+  if (!is.null(object$cox_model)) {
+    cat("\nCox Regression Model:\n")
+    print(object$cox_model$call)
+    cat("\nCoefficients:\n")
+    print(coef(summary(object$cox_model)))
+    cat("\nLikelihood ratio test: ",
+        object$cox_model$logtest["test"],
+        " on ",
+        object$cox_model$logtest["df"],
+        " df, p-value = ",
+        object$cox_model$logtest["pvalue"],
+        "\n", sep = "")
+    cat("n = ", object$cox_model$n, ", number of events = ", sum(object$cox_model$y[, 2]), "\n", sep = "")
+    cat("\nCox Model Concordance Index (C-index): ", object$best_model$cox_c_index, "\n", sep = "")
+  } else {
+    # Extract best tuning parameters
+    best_tuning_params <- list(
+      max_depth = object$best_model$params$max_depth,
+      learning_rate = object$best_model$params$learning_rate,
+      min_split_loss = object$best_model$params$min_split_loss,
+      min_child_weight = object$best_model$params$min_child_weight,
+      subsample = object$best_model$params$subsample,
+      nrounds = object$best_model$params$nrounds
+    )
 
-  cat("\nBest Tuning Parameters:\n")
-  for (param in names(best_tuning_params)) {
-    cat(paste(param, ":", best_tuning_params[[param]], "\n"))
-  }
+    cat("\nBest Tuning Parameters:\n")
+    for (param in names(best_tuning_params)) {
+      cat(paste(param, ":", best_tuning_params[[param]], "\n"))
+    }
 
-  if (object$metric == "nloglik") {
     cat("\nBest Train Negative Log-Likelihood:", object$best_metric_value, "\n")
     if (isTRUE(prn)) {
       # Output the training log-likelihood iterations
@@ -315,18 +311,8 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
       cat("\nTrain Log Iterations:\n")
       print(eval_log)
     }
-  } else if (object$metric == "cindex") {
-    cat("\nBest Train Concordance Index:", object$best_metric_value, "\n")
-    if (isTRUE(prn)) {
-      # Output the training C-index iterations
-      eval_log <- object$best_model$evaluation_log
-      cat("\nTrain C-index Iterations:\n")
-      print(head(eval_log, 100))
-    }
   }
 }
-
-
 
 #' Predict method for the gbt_survival function
 #'
@@ -337,6 +323,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #' @param pred_cmd Generate predictions using a command. For example, `age = seq(30, 60, 5)` would produce predictions for different ages. To add another variable, create a vector of prediction strings, e.g., c('age = seq(30, 60, 5)', 'sex = c("male", "female")')
 #' @param dec Number of decimals to show
 #' @param envir Environment to extract data from
+#' @param cox_regression Boolean flag to indicate if Cox regression predictions are needed
 #' @param ... further arguments passed to or from other methods
 #'
 #' @examples
@@ -348,7 +335,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #'
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
-                                  dec = 3, envir = parent.frame(), ...) {
+                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, ...) {
   if (is.character(object)) {
     return(object)
   }
@@ -362,7 +349,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     df_name <- pred_data
   }
 
-  pfun <- function(model, pred, se, conf_lev) {
+  pfun_gbt <- function(model, pred, se, conf_lev) {
     # Ensure the factor levels in the prediction data are the
     # same as in the data used for estimation
     est_data <- model$model
@@ -387,11 +374,41 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     pred_val_df
   }
 
+  pfun_cox <- function(model, pred, se, conf_lev) {
+    # Predict using the Cox regression model
+    pred_val <- predict(model, newdata = pred, type = "lp")
+
+    # Compute the cumulative baseline hazard function
+    baseline_hazard <- basehaz(model, centered = FALSE)
+
+    # Interpolate the cumulative baseline hazard at the predicted times
+    cumulative_hazard <- approx(baseline_hazard$time, baseline_hazard$hazard, xout = pred_data[[object$time_var]], rule = 2)$y
+
+    # Calculate the survival probabilities
+    survival_prob <- exp(-exp(pred_val) * cumulative_hazard)
+
+    # Convert predictions to data frame
+    pred_val_df <- data.frame(SurvivalProbability = survival_prob)
+
+    pred_val_df
+  }
+
+  pfun <- if (cox_regression) {
+    if (!is.null(object$cox_model)) {
+      function(model, pred, se, conf_lev) pfun_cox(object$cox_model, pred, se, conf_lev)
+    } else {
+      stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
+    }
+  } else {
+    pfun_gbt
+  }
+
   pred_results <- predict_model(object, pfun, "gbt_survival.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir)
 
   pred_results %>%
     set_attr("radiant_pred_data", df_name)
 }
+
 
 
 #' Print method for predict.gbt_survival
@@ -594,23 +611,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       ggsurvplot <- function(fit, evar, xlab = "Time", ylab = "Survival Probability", ...) {
         surv_summary <- summary(fit)
         df <- data.frame(time = surv_summary$time, surv = surv_summary$surv, strata = rep(surv_summary$strata, times = sapply(surv_summary$strata, length)))
-
-        # Calculate the time where survival probability is closest to 0.5
-        df_split <- split(df, df$strata)
-        vline_data <- data.frame(time = numeric(0), strata = character(0))
-        for (stratum in names(df_split)) {
-          strata_df <- df_split[[stratum]]
-          closest_idx <- which.min(abs(strata_df$surv - 0.5))
-          vline_data <- rbind(vline_data, data.frame(time = strata_df$time[closest_idx], strata = stratum))
-        }
-
         g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
           geom_step() +
-          geom_hline(yintercept = 0.5, linetype = "dotted") + # Add horizontal dotted line at 0.5
-          geom_vline(data = vline_data, aes(xintercept = time, color = strata), linetype = "dotted") + # Add vertical dotted line at the closest time to 0.5 survival
           labs(x = xlab, y = ylab) +
           theme_minimal() +
           scale_color_discrete(name = evar) +
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) + # Use linewidth instead of size
           theme(
             legend.title = element_text(size = 18, face = "bold"),
             legend.text = element_text(size = 14),
@@ -626,28 +632,14 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     ncol <- max(ncol, 2)
   }
 
+
   if ("importance" %in% plots) {
-    # Permutation Importance Plot using Cox model nloglik
-    calculate_cox_nloglik <- function(data, time_var, status_var, model, incl) {
-      surv_obj <- Surv(time = data[[time_var]], event = data[[status_var]])
-      fit <- coxph(surv_obj ~ ., data = data[, incl, drop = FALSE])
-      return(-fit$loglik[2])  # Return negative log-likelihood
-    }
+    importance <- xgb.importance(model = model)
 
-    baseline_nloglik <- calculate_cox_nloglik(dataset, time_var, status_var, model, incl)
-    importance <- data.frame(Variable = incl, Importance = 0)
-
-    for (evar in incl) {
-      permuted_data <- dataset
-      permuted_data[[evar]] <- sample(permuted_data[[evar]])
-      permuted_nloglik <- calculate_cox_nloglik(permuted_data, time_var, status_var, model, incl)
-      importance[importance$Variable == evar, "Importance"] <- permuted_nloglik - baseline_nloglik
-    }
-
-    importance_plot <- ggplot(importance, aes(x = reorder(Variable, Importance), y = Importance)) +
+    importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
       geom_bar(stat = "identity") +
       coord_flip() +
-      labs(x = "Variable", y = "Permutation Importance (Cox nloglik)", title = "Permutation Importance using Cox nloglik") +
+      labs(x = "Variable", y = "Importance (Gain)", title = "Feature Importance using XGBoost") +
       theme_minimal() +
       theme(
         axis.title = element_text(size = 18, face = "bold"),
@@ -660,13 +652,16 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   }
 
   if (length(plot_list) > 0) {
-    patchwork::wrap_plots(plot_list, ncol = ncol)
+    if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
+      return(plot_list[["importance"]])
+    } else {
+      combined_plot <- subplot(plot_list, nrows = length(plot_list), shareX = TRUE, shareY = TRUE, titleX = TRUE, titleY = TRUE)
+      return(combined_plot)
+    }
   } else {
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
-
-
 
 
 
