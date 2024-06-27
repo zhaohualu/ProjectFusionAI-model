@@ -669,7 +669,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           axis.title = element_text(size = 18, face = "bold"),
           axis.text = element_text(size = 14),
           plot.title = element_text(size = 20)
-        )
+        ) +
+        scale_x_log10() 
       g
     }
     
@@ -677,27 +678,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   }
   
   if ("importance" %in% plots) {
-    # Permutation Importance Plot using Cox model nloglik
-    calculate_cox_nloglik <- function(data, time_var, status_var, model, incl) {
-      surv_obj <- Surv(time = data[[time_var]], event = data[[status_var]])
-      fit <- coxph(surv_obj ~ ., data = data[, incl, drop = FALSE])
-      return(-fit$loglik[2])  # Return negative log-likelihood
-    }
+    importance <- xgb.importance(model = model)
     
-    baseline_nloglik <- calculate_cox_nloglik(dataset, time_var, status_var, model, incl)
-    importance <- data.frame(Variable = incl, Importance = 0)
-    
-    for (evar in incl) {
-      permuted_data <- dataset
-      permuted_data[[evar]] <- sample(permuted_data[[evar]])
-      permuted_nloglik <- calculate_cox_nloglik(permuted_data, time_var, status_var, model, incl)
-      importance[importance$Variable == evar, "Importance"] <- permuted_nloglik - baseline_nloglik
-    }
-    
-    importance_plot <- ggplot(importance, aes(x = reorder(Variable, Importance), y = Importance)) +
+    importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
       geom_bar(stat = "identity") +
       coord_flip() +
-      labs(x = "Variable", y = "Permutation Importance (Cox nloglik)", title = "Permutation Importance using Cox nloglik") +
+      labs(x = "Variable", y = "Importance (Gain)", title = "Feature Importance using XGBoost") +
       theme_minimal() +
       theme(
         axis.title = element_text(size = 18, face = "bold"),
@@ -710,7 +696,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   }
   
   if (length(plot_list) > 0) {
-    patchwork::wrap_plots(plot_list, ncol = ncol)
+    if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
+      return(plot_list[["importance"]])
+    } else {
+      combined_plot <- subplot(plot_list, nrows = length(plot_list), shareX = TRUE, shareY = TRUE, titleX = TRUE, titleY = TRUE)
+      return(combined_plot)
+    }
   } else {
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
