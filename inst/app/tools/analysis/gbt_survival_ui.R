@@ -138,7 +138,6 @@ output$ui_incl <- renderUI({
   selectInput("incl", "Variables to include in KM plot:", choices = vars, selected = selected_vars, multiple = TRUE)
 })
 
-
 output$ui_evar_values <- renderUI({
   req(input$dataset)
   vars <- input$incl
@@ -164,7 +163,7 @@ output$ui_gbt_survival <- renderUI({
       condition = "input.tabs_gbt_survival == 'Summary'",
       wellPanel(
         selectInput("gbt_survival_metric", "Evaluation metric:",
-                    choices = list("Negative Log-Likelihood" = "nloglik", "Concordance Index" = "cindex"),
+                    choices = list("Negative Log-Likelihood" = "nloglik"),
                     selected = "nloglik"),
         actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
       ),
@@ -485,6 +484,8 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
+
 
 
 
