@@ -574,90 +574,143 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
 #' )
 #' plot(result, plots = c("km"), incl = c("age", "sex"), evar_values = list(age = c(60, 70), sex = c(1)))
 #' @export
-plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), ...) {
+plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), seed = 1234, ...) {
   if (is.character(x) || !inherits(x$model, "xgb.Booster")) {
     return(x)
   }
   plot_list <- list()
   ncol <- 1
-
+  
   # Load necessary libraries
   library(survival)
   library(ggplot2)
   library(patchwork)
   library(xgboost)
-
+  library(dplyr)
+  
   # Extract data and model
   dataset <- x$dataset
   time_var <- x$time_var
   status_var <- x$status_var
   model <- x$model
-
-  if ("km" %in% plots) {
-    # Kaplan-Meier Curve
-    for (evar in incl) {
-      if (!evar %in% colnames(dataset)) {
-        stop(paste("Variable", evar, "not found in the dataset."))
-      }
-
-      values <- evar_values[[evar]]
-      if (!is.null(values)) {
-        dataset <- dataset[dataset[[evar]] %in% values, ]
-      }
-
-      surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
-      fit <- survfit(surv_obj ~ dataset[[evar]])
-
-      ggsurvplot <- function(fit, evar, xlab = "Time", ylab = "Survival Probability", ...) {
-        surv_summary <- summary(fit)
-        df <- data.frame(time = surv_summary$time, surv = surv_summary$surv, strata = rep(surv_summary$strata, times = sapply(surv_summary$strata, length)))
-        g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
-          geom_step() +
-          labs(x = xlab, y = ylab) +
-          theme_minimal() +
-          scale_color_discrete(name = evar) +
-          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) + # Use linewidth instead of size
-          theme(
-            legend.title = element_text(size = 18, face = "bold"),
-            legend.text = element_text(size = 14),
-            axis.title = element_text(size = 18, face = "bold"),
-            axis.text = element_text(size = 14),
-            plot.title = element_text(size = 20)
-          )
-        g
-      }
-
-      plot_list[[evar]] <- ggsurvplot(fit, evar)
+  
+  # Prepare the dataset with new time labels
+  dataset <- dataset %>%
+    mutate(new_time = ifelse(dataset[[status_var]] == 0, -dataset[[time_var]], dataset[[time_var]]))
+  
+  set.seed(seed)
+  train_idx <- sample(seq_len(nrow(dataset)), size = 0.8 * nrow(dataset))
+  train_data <- dataset[train_idx, ]
+  eval_data <- dataset[-train_idx, ]
+  
+  # Ensure that all levels are present in the training data
+  for (evar in incl) {
+    if (is.factor(train_data[[evar]]) && !is.null(evar_values[[evar]])) {
+      train_data[[evar]] <- factor(train_data[[evar]], levels = evar_values[[evar]])
+      eval_data[[evar]] <- factor(eval_data[[evar]], levels = evar_values[[evar]])
     }
-    ncol <- max(ncol, 2)
   }
-
-
+  
+  # Create model matrix for the training data
+  dtrain <- model.matrix(~ . - 1, data = train_data[, incl, drop = FALSE])
+  train_dmatrix <- xgb.DMatrix(data = dtrain, label = train_data$new_time)
+  
+  # Ensure the same columns in evaluation data
+  deval <- model.matrix(~ . - 1, data = eval_data[, incl, drop = FALSE])
+  
+  # Calculate cumulative hazard function
+  base_hazard <- basehaz(coxph(Surv(train_data[[time_var]], train_data[[status_var]]) ~ 1, data = train_data), centered = FALSE)
+  
+  for (evar in incl) {
+    if (!evar %in% colnames(dataset)) {
+      stop(paste("Variable", evar, "not found in the dataset."))
+    }
+    
+    values <- evar_values[[evar]]
+    if (!is.null(values)) {
+      eval_data <- eval_data[eval_data[[evar]] %in% values, ]
+    }
+    
+    # Ensure that all levels are present in the evaluation data
+    eval_data[[evar]] <- factor(eval_data[[evar]], levels = values)
+    
+    # Prepare data for prediction
+    dtest <- xgb.DMatrix(data = deval)
+    pred <- predict(model, dtest)
+    
+    # Compute survival probabilities
+    surv_probs <- t(sapply(1:nrow(eval_data), function(i) {
+      exp(-cumsum(base_hazard$hazard) * exp(pred[i]))
+    }))
+    
+    # Prepare data for plotting
+    df_list <- list()
+    for (i in seq_len(nrow(eval_data))) {
+      df <- data.frame(
+        time = base_hazard$time,
+        surv = surv_probs[i, ],
+        strata = as.factor(rep(eval_data[[evar]][i], length(base_hazard$time)))
+      )
+      df_list[[i]] <- df
+    }
+    df <- bind_rows(df_list)
+    
+    # Plot survival curves
+    ggsurvplot <- function(df, evar, xlab = "Time", ylab = "Survival Probability", ...) {
+      g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
+        geom_step(na.rm = TRUE) +
+        labs(x = xlab, y = ylab) +
+        theme_minimal() +
+        scale_color_discrete(name = evar) +
+        geom_hline(yintercept = 0.5, linetype = "dotted", color = "red", linewidth = 1) +
+        theme(
+          legend.title = element_text(size = 18, face = "bold"),
+          legend.text = element_text(size = 14),
+          axis.title = element_text(size = 18, face = "bold"),
+          axis.text = element_text(size = 14),
+          plot.title = element_text(size = 20)
+        )
+      g
+    }
+    
+    plot_list[[evar]] <- ggsurvplot(df, evar)
+  }
+  
   if ("importance" %in% plots) {
-    importance <- xgb.importance(model = model)
-
-    importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
+    # Permutation Importance Plot using Cox model nloglik
+    calculate_cox_nloglik <- function(data, time_var, status_var, model, incl) {
+      surv_obj <- Surv(time = data[[time_var]], event = data[[status_var]])
+      fit <- coxph(surv_obj ~ ., data = data[, incl, drop = FALSE])
+      return(-fit$loglik[2])  # Return negative log-likelihood
+    }
+    
+    baseline_nloglik <- calculate_cox_nloglik(dataset, time_var, status_var, model, incl)
+    importance <- data.frame(Variable = incl, Importance = 0)
+    
+    for (evar in incl) {
+      permuted_data <- dataset
+      permuted_data[[evar]] <- sample(permuted_data[[evar]])
+      permuted_nloglik <- calculate_cox_nloglik(permuted_data, time_var, status_var, model, incl)
+      importance[importance$Variable == evar, "Importance"] <- permuted_nloglik - baseline_nloglik
+    }
+    
+    importance_plot <- ggplot(importance, aes(x = reorder(Variable, Importance), y = Importance)) +
       geom_bar(stat = "identity") +
       coord_flip() +
-      labs(x = "Variable", y = "Importance (Gain)", title = "Feature Importance using XGBoost") +
+      labs(x = "Variable", y = "Permutation Importance (Cox nloglik)", title = "Permutation Importance using Cox nloglik") +
       theme_minimal() +
       theme(
         axis.title = element_text(size = 18, face = "bold"),
         axis.text = element_text(size = 14),
         plot.title = element_text(size = 20)
       )
-
+    
     plot_list[["importance"]] <- importance_plot
     ncol <- max(ncol, 1)
   }
-
+  
   if (length(plot_list) > 0) {
-    if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
-      return(plot_list[["importance"]])
-    } else {
-      combined_plot <- subplot(plot_list, nrows = length(plot_list), shareX = TRUE, shareY = TRUE, titleX = TRUE, titleY = TRUE)
-      return(combined_plot)
-    }
+    patchwork::wrap_plots(plot_list, ncol = ncol)
   } else {
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
