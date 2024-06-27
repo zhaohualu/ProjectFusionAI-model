@@ -1,3 +1,10 @@
+# Model selection options
+model_options <- c(
+  "XGBoost" = "xgboost",
+  "Cox Regression" = "cox"
+)
+
+# Gradient Boosted Trees plots
 gbt_survival_plots <- c(
   "None" = "none",
   "Kaplan Meier Plot" = "km",
@@ -6,13 +13,13 @@ gbt_survival_plots <- c(
 
 gbt_survival_args <- as.list(formals(gbt_survival))
 
-# list of function inputs selected by user
+# List of function inputs selected by user
 gbt_survival_inputs <- reactive({
   gbt_survival_args$data_filter <- if (input$show_filter) input$data_filter else ""
   gbt_survival_args$arr <- if (input$show_filter) input$data_arrange else ""
   gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
-  gbt_survival_args$metric <- input$gbt_survival_metric
+  gbt_survival_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
   for (i in r_drop(names(gbt_survival_args))) {
     if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
@@ -34,7 +41,7 @@ gbt_survival_plot_args <- as.list(if (exists("plot.gbt_survival")) {
   formals(radiant.model:::plot.gbt_survival)
 })
 
-# list of function inputs selected by user
+# List of function inputs selected by user
 gbt_survival_plot_inputs <- reactive({
   for (i in names(gbt_survival_plot_args)) {
     gbt_survival_plot_args[[i]] <- input[[paste0("gbt_survival_", i)]]
@@ -42,7 +49,7 @@ gbt_survival_plot_inputs <- reactive({
   gbt_survival_plot_args
 })
 
-# list of function inputs selected by user
+# List of function inputs selected by user
 gbt_survival_pred_inputs <- reactive({
   for (i in names(gbt_survival_pred_args)) {
     gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival_", i)]]
@@ -62,6 +69,7 @@ gbt_survival_pred_inputs <- reactive({
     gbt_survival_pred_args$pred_data <- input$gbt_survival_pred_data
   }
   gbt_survival_pred_args$evar <- input$gbt_survival_evar
+  gbt_survival_pred_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
   gbt_survival_pred_args
 })
 
@@ -146,10 +154,14 @@ output$ui_evar_values <- renderUI({
   })
 })
 
-# reset prediction and plot settings when the dataset changes
+# Reset prediction and plot settings when the dataset changes or model selection changes
 observeEvent(input$dataset, {
   updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
   updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
+})
+
+observeEvent(input$model_selection, {
+  updateTabsetPanel(session, "tabs_gbt_survival", selected = "Summary")
 })
 
 output$ui_create_plot_button <- renderUI({
@@ -159,12 +171,12 @@ output$ui_create_plot_button <- renderUI({
 output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
+    wellPanel(
+      selectInput("model_selection", "Model selection:", choices = model_options, selected = "xgboost")
+    ),
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Summary'",
       wellPanel(
-        selectInput("gbt_survival_metric", "Evaluation metric:",
-                    choices = list("Negative Log-Likelihood" = "nloglik"),
-                    selected = "nloglik"),
         actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
       ),
       wellPanel(
@@ -224,7 +236,7 @@ output$ui_gbt_survival <- renderUI({
             uiOutput("ui_gbt_survival_predict_plot")
           )
         ),
-        # only show if full data is used for prediction
+        # Only show if full data is used for prediction
         conditionalPanel(
           "input.gbt_survival_predict == 'data' | input.gbt_survival_predict == 'datacmd'",
           tags$table(
@@ -358,7 +370,7 @@ output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
 
-  # three separate tabs
+  # Three separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
     tabPanel(
@@ -484,6 +496,7 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
 
 
 
