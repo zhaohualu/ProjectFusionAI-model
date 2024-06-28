@@ -19,7 +19,7 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$arr <- if (input$show_filter) input$data_arrange else ""
   gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
-  gbt_survival_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
+  gbt_survival_args$cox_regression <- (input$model_selection == "cox")  # Adjusted line
   for (i in r_drop(names(gbt_survival_args))) {
     if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
@@ -160,9 +160,6 @@ observeEvent(input$dataset, {
   updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
 })
 
-observeEvent(input$model_selection, {
-  updateTabsetPanel(session, "tabs_gbt_survival", selected = "Summary")
-})
 
 output$ui_create_plot_button <- renderUI({
   actionButton("create_plot", "Create plot", icon = icon("play"), class = "btn-primary")
@@ -172,33 +169,42 @@ output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
     wellPanel(
-      selectInput("model_selection", "Model selection:", choices = model_options, selected = "xgboost")
-    ),
+      selectInput("model_selection", "Model selection:", choices = model_options, selected = "xgboost")),
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Summary'",
       wellPanel(
         actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
       ),
-      wellPanel(
-        uiOutput("ui_gbt_survival_time_var"),
-        uiOutput("ui_gbt_survival_status_var"),
-        uiOutput("ui_gbt_survival_evar"),
-        uiOutput("ui_gbt_survival_wts"),
-        textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
-        textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
-        textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
-        textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
-        textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
-        textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
-        numericInput(
-          "gbt_survival_early_stopping_rounds",
-          label = "Early stopping:", min = 1, max = 10,
-          step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
-        ),
-        numericInput(
-          "gbt_survival_seed",
-          label = "Seed:",
-          value = state_init("gbt_survival_seed", 1234)
+      conditionalPanel(
+        condition = "input$model_selection == 'cox'",
+        wellPanel(
+          uiOutput("ui_gbt_survival_time_var"),
+          uiOutput("ui_gbt_survival_status_var"),
+          uiOutput("ui_gbt_survival_evar")
+        )
+      ),
+      conditionalPanel(
+        condition = "input$model_selection == 'xgboost'",
+        wellPanel(
+          uiOutput("ui_gbt_survival_time_var"),
+          uiOutput("ui_gbt_survival_status_var"),
+          uiOutput("ui_gbt_survival_evar"),
+          textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
+          textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
+          textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
+          textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
+          textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
+          textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
+          numericInput(
+            "gbt_survival_early_stopping_rounds",
+            label = "Early stopping:", min = 1, max = 10,
+            step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
+          ),
+          numericInput(
+            "gbt_survival_seed",
+            label = "Seed:",
+            value = state_init("gbt_survival_seed", 1234)
+          )
         )
       )
     ),
@@ -266,6 +272,7 @@ output$ui_gbt_survival <- renderUI({
   )
 })
 
+
 gbt_survival_available <- reactive({
   req(input$dataset)
   if (not_available(input$gbt_survival_time_var)) {
@@ -282,9 +289,17 @@ gbt_survival_available <- reactive({
   }
 })
 
-.gbt_survival <- eventReactive(input$gbt_survival_run, {
+.gbt_survival <- reactiveVal(NULL)
+
+# Event to trigger the model estimation
+observeEvent(input$gbt_survival_run, {
   gbti <- gbt_survival_inputs()
   gbti$envir <- r_data
+  if (input$model_selection == "cox") {
+    gbti$cox_regression <- TRUE
+  } else {
+    gbti$cox_regression <- FALSE
+  }
   if (is.empty(gbti$max_depth)) gbti$max_depth <- 6
   if (is.empty(gbti$learning_rate)) gbti$learning_rate <- 0.3
   if (is.empty(gbti$min_split_loss)) gbti$min_split_loss <- 0.01
@@ -295,12 +310,23 @@ gbt_survival_available <- reactive({
 
   withProgress(
     message = "Estimating model", value = 1,
-    do.call(gbt_survival, gbti)
+    {
+      model_result <- do.call(gbt_survival, gbti)
+      .gbt_survival(model_result)
+    }
   )
 })
 
+
+# Trigger model re-estimation when the model selection changes
+## reset prediction settings when the model type changes
+observeEvent(input$cox_regression, {
+  updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
+})
+
 .summary_gbt_survival <- reactive({
-  if (not_pressed(input$gbt_survival_run)) {
+  if (is.null(.gbt_survival())) {
     return("** Press the Estimate button to estimate the model **")
   }
   if (gbt_survival_available() != "available") {
@@ -310,7 +336,7 @@ gbt_survival_available <- reactive({
 })
 
 .predict_gbt_survival <- reactive({
-  if (not_pressed(input$gbt_survival_run)) {
+  if (is.null(.gbt_survival())) {
     return("** Press the Estimate button to estimate the model **")
   }
   if (gbt_survival_available() != "available") {
@@ -403,7 +429,7 @@ output$gbt_survival <- renderUI({
 })
 
 .plot_gbt_survival <- reactive({
-  if (not_pressed(input$gbt_survival_run)) {
+  if (is.null(.gbt_survival())) {
     return("** Press the Estimate button to estimate the model **")
   } else if (gbt_survival_available() != "available") {
     return(gbt_survival_available())
@@ -496,7 +522,6 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
-
 
 
 
