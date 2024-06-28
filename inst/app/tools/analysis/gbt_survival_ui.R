@@ -160,7 +160,6 @@ observeEvent(input$dataset, {
   updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
 })
 
-
 output$ui_create_plot_button <- renderUI({
   actionButton("create_plot", "Create plot", icon = icon("play"), class = "btn-primary")
 })
@@ -168,43 +167,34 @@ output$ui_create_plot_button <- renderUI({
 output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
-    wellPanel(
-      selectInput("model_selection", "Model selection:", choices = model_options, selected = "xgboost")),
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Summary'",
       wellPanel(
+        selectInput("model_selection", "Model selection:",
+                    choices = model_options,
+                    selected = "xgboost"),
         actionButton("gbt_survival_run", "Estimate model", width = "100%", icon = icon("play"), class = "btn-success")
       ),
-      conditionalPanel(
-        condition = "input$model_selection == 'cox'",
-        wellPanel(
-          uiOutput("ui_gbt_survival_time_var"),
-          uiOutput("ui_gbt_survival_status_var"),
-          uiOutput("ui_gbt_survival_evar")
-        )
-      ),
-      conditionalPanel(
-        condition = "input$model_selection == 'xgboost'",
-        wellPanel(
-          uiOutput("ui_gbt_survival_time_var"),
-          uiOutput("ui_gbt_survival_status_var"),
-          uiOutput("ui_gbt_survival_evar"),
-          textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
-          textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
-          textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
-          textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
-          textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
-          textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
-          numericInput(
-            "gbt_survival_early_stopping_rounds",
-            label = "Early stopping:", min = 1, max = 10,
-            step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
-          ),
-          numericInput(
-            "gbt_survival_seed",
-            label = "Seed:",
-            value = state_init("gbt_survival_seed", 1234)
-          )
+      wellPanel(
+        uiOutput("ui_gbt_survival_time_var"),
+        uiOutput("ui_gbt_survival_status_var"),
+        uiOutput("ui_gbt_survival_evar"),
+        uiOutput("ui_gbt_survival_wts"),
+        textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
+        textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
+        textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
+        textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
+        textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
+        textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
+        numericInput(
+          "gbt_survival_early_stopping_rounds",
+          label = "Early stopping:", min = 1, max = 10,
+          step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
+        ),
+        numericInput(
+          "gbt_survival_seed",
+          label = "Seed:",
+          value = state_init("gbt_survival_seed", 1234)
         )
       )
     ),
@@ -242,7 +232,7 @@ output$ui_gbt_survival <- renderUI({
             uiOutput("ui_gbt_survival_predict_plot")
           )
         ),
-        # Only show if full data is used for prediction
+        # only show if full data is used for prediction
         conditionalPanel(
           "input.gbt_survival_predict == 'data' | input.gbt_survival_predict == 'datacmd'",
           tags$table(
@@ -316,7 +306,6 @@ observeEvent(input$gbt_survival_run, {
     }
   )
 })
-
 
 # Trigger model re-estimation when the model selection changes
 ## reset prediction settings when the model type changes
@@ -396,7 +385,7 @@ output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
 
-  # Three separate tabs
+  # three separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
     tabPanel(
