@@ -271,29 +271,6 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
-  cat("Max depth            :", paste(object$max_depth, collapse = " "), "\n")
-  cat("Learning rate (eta)  :", paste(object$learning_rate, collapse = " "), "\n")
-  cat("Min split loss       :", paste(object$min_split_loss, collapse = " "), "\n")
-  cat("Min child weight     :", paste(object$min_child_weight, collapse = " "), "\n")
-  cat("Sub-sample           :", paste(object$subsample, collapse = " "), "\n")
-  cat("Nr of rounds (trees) :", paste(object$nrounds, collapse = " "), "\n")
-  cat("Early stopping rounds:", object$early_stopping_rounds, "\n")
-  if (length(object$extra_args)) {
-    extra_args <- deparse(object$extra_args) %>%
-      sub("list\\(", "", .) %>%
-      sub("\\)$", "", .) %>%
-      sub(" {2,}", " ", .)
-    cat("Additional arguments :", extra_args, "\n")
-  }
-  if (!is.empty(object$seed)) {
-    cat("Seed                 :", object$seed, "\n")
-  }
-
-  if (!is.empty(object$wts, "None") && (length(unique(object$wts)) > 2 || min(object$wts) >= 1)) {
-    cat("Nr obs               :", format_nr(sum(object$wts), dec = 0), "\n")
-  } else {
-    cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
-  }
 
   if (!is.null(object$cox_model)) {
     cat("\nCox Regression Model:\n")
@@ -310,7 +287,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("n = ", object$cox_model$n, ", number of events = ", sum(object$cox_model$y[, 2]), "\n", sep = "")
     cat("\nCox Model Concordance Index (C-index): ", object$best_model$avg_cox_c_index, "\n", sep = "")
   } else {
-    # Extract best tuning parameters
+    # Extract best tuning parameters if not using Cox regression
     best_tuning_params <- list(
       max_depth = object$best_model$params$max_depth,
       learning_rate = object$best_model$params$learning_rate,
@@ -333,7 +310,18 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
       print(eval_log)
     }
   }
+
+  if (!is.empty(object$seed)) {
+    cat("Seed                 :", object$seed, "\n")
+  }
+
+  if (!is.empty(object$wts, "None") && (length(unique(object$wts)) > 2 || min(object$wts) >= 1)) {
+    cat("Nr obs               :", format_nr(sum(object$wts), dec = 0), "\n")
+  } else {
+    cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
+  }
 }
+
 
 #' Predict method for the gbt_survival function
 #'
@@ -681,6 +669,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
