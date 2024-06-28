@@ -52,12 +52,13 @@
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
-                         max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
-                         min_child_weight = c(1), subsample = c(1),
-                         nrounds = c(100), early_stopping_rounds = 10,
-                         nthread = 12, wts = "None", seed = 1234,
-                         data_filter = "", arr = "", rows = NULL,
-                         envir = parent.frame(), cox_regression = FALSE, ...) {
+                          max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
+                          min_child_weight = c(1), subsample = c(1),
+                          nrounds = c(100), early_stopping_rounds = 10,
+                          nthread = 12, wts = "None", seed = 1234,
+                          data_filter = "", arr = "", rows = NULL,
+                          envir = parent.frame(), cox_regression = FALSE,
+                          nfold = 10, ...) {
   # Check and install survcomp package if not already installed
   if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
@@ -111,9 +112,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
            new_time = ifelse(dataset[[status_var]] == 0, -new_time, new_time))
 
   set.seed(seed)
-  train_idx <- sample(seq_len(nrow(dataset)), size = 0.8 * nrow(dataset))
-  train_data <- dataset[train_idx, ]
-  eval_data <- dataset[-train_idx, ]
+  folds <- sample(rep(seq_len(nfold), length.out = nrow(dataset)))
 
   best_model <- NULL
   best_metric_value <- Inf
@@ -127,50 +126,62 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
           for (ss in subsample) {
             for (nr in nrounds) {
 
-              gbt_input <- list(
-                max_depth = d,
-                learning_rate = lr,
-                min_split_loss = msl,
-                min_child_weight = mcw,
-                subsample = ss,
-                nrounds = nr,
-                early_stopping_rounds = early_stopping_rounds,
-                nthread = nthread,
-                objective = "survival:cox",
-                eval_metric = "cox-nloglik",
-                verbose = 0
-              )
+              cv_results <- data.frame(fold = integer(), metric_value = numeric())
 
-              ## adding data
-              dtx <- model.matrix(~ . - 1, data = train_data[, evar, drop = FALSE])
-              y_lower <- train_data$new_time
+              for (fold in 1:nfold) {
+                train_data <- dataset[folds != fold, ]
+                eval_data <- dataset[folds == fold, ]
 
-              dtrain <- xgb.DMatrix(data = dtx, label = y_lower)
+                gbt_input <- list(
+                  max_depth = d,
+                  learning_rate = lr,
+                  min_split_loss = msl,
+                  min_child_weight = mcw,
+                  subsample = ss,
+                  nrounds = nr,
+                  early_stopping_rounds = early_stopping_rounds,
+                  nthread = nthread,
+                  objective = "survival:cox",
+                  eval_metric = "cox-nloglik",
+                  verbose = 0
+                )
 
-              ## Check that dty has the same length as the number of rows in dtx
-              if (length(y_lower) != nrow(dtx)) {
-                stop("The length of labels must equal to the number of rows in the input data")
-              }
+                ## adding data
+                dtx <- model.matrix(~ . - 1, data = train_data[, evar, drop = FALSE])
+                y_lower <- train_data$new_time
 
-              watchlist <- list(train = dtrain)
+                dtrain <- xgb.DMatrix(data = dtx, label = y_lower)
 
-              gbt_input$data <- dtrain
-              gbt_input$watchlist <- watchlist
-
-              seed <- gsub("[^0-9]", "", seed)
-              if (!is.empty(seed)) {
-                if (exists(".Random.seed")) {
-                  gseed <- .Random.seed
-                  on.exit(.Random.seed <<- gseed)
+                ## Check that dty has the same length as the number of rows in dtx
+                if (length(y_lower) != nrow(dtx)) {
+                  stop("The length of labels must equal to the number of rows in the input data")
                 }
-                set.seed(seed)
+
+                watchlist <- list(train = dtrain)
+
+                gbt_input$data <- dtrain
+                gbt_input$watchlist <- watchlist
+
+                seed <- gsub("[^0-9]", "", seed)
+                if (!is.empty(seed)) {
+                  if (exists(".Random.seed")) {
+                    gseed <- .Random.seed
+                    on.exit(.Random.seed <<- gseed)
+                  }
+                  set.seed(seed)
+                }
+
+                model <- do.call(xgboost::xgb.train, gbt_input)
+
+                metric_value <- model$best_score
+                if (!is.null(metric_value) && length(metric_value) > 0) {
+                  cv_results <- rbind(cv_results, data.frame(fold = fold, metric_value = metric_value))
+                }
               }
 
-              model <- do.call(xgboost::xgb.train, gbt_input)
-
-              metric_value <- model$best_score
-              if (!is.null(metric_value) && length(metric_value) > 0 && metric_value < best_metric_value) {
-                best_metric_value <- metric_value
+              avg_metric_value <- mean(cv_results$metric_value)
+              if (avg_metric_value < best_metric_value) {
+                best_metric_value <- avg_metric_value
                 best_model <- model
                 best_tuning_parameters <- list(
                   max_depth = d,
@@ -194,17 +205,27 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   }
 
   if (cox_regression) {
-    # Perform Cox regression modeling
-    formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
-    cox_model <- coxph(formula, data = dataset)
+    # Perform Cox regression modeling using cross-validation
+    cox_c_indices <- numeric()
 
-    # Calculate the concordance index (C-index) for the Cox model
-    cox_pred <- predict(cox_model, newdata = eval_data, type = "risk")
-    c_index <- concordance.index(cox_pred, eval_data[[time_var]], eval_data[[status_var]])$c.index
+    for (fold in 1:nfold) {
+      train_data <- dataset[folds != fold, ]
+      eval_data <- dataset[folds == fold, ]
+
+      formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
+      cox_model <- coxph(formula, data = train_data)
+
+      # Calculate the concordance index (C-index) for the Cox model
+      cox_pred <- predict(cox_model, newdata = eval_data, type = "risk")
+      c_index <- concordance.index(cox_pred, eval_data[[time_var]], eval_data[[status_var]])$c.index
+      cox_c_indices <- c(cox_c_indices, c_index)
+    }
+
+    avg_cox_c_index <- mean(cox_c_indices)
 
     # Add Cox regression results to the output
-    best_model$cox_model <- cox_model
-    best_model$cox_c_index <- c_index
+    best_model$cox_c_indices <- cox_c_indices
+    best_model$avg_cox_c_index <- avg_cox_c_index
   }
 
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
@@ -287,7 +308,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
         object$cox_model$logtest["pvalue"],
         "\n", sep = "")
     cat("n = ", object$cox_model$n, ", number of events = ", sum(object$cox_model$y[, 2]), "\n", sep = "")
-    cat("\nCox Model Concordance Index (C-index): ", object$best_model$cox_c_index, "\n", sep = "")
+    cat("\nCox Model Concordance Index (C-index): ", object$best_model$avg_cox_c_index, "\n", sep = "")
   } else {
     # Extract best tuning parameters
     best_tuning_params <- list(
@@ -335,7 +356,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #'
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
-                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, ...) {
+                                  dec = 3, envir = parent.frame(), cox_regression = FALSE, ...) {
   if (is.character(object)) {
     return(object)
   }
@@ -382,7 +403,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     baseline_hazard <- basehaz(model, centered = FALSE)
 
     # Interpolate the cumulative baseline hazard at the predicted times
-    cumulative_hazard <- approx(baseline_hazard$time, baseline_hazard$hazard, xout = pred_data[[object$time_var]], rule = 2)$y
+    cumulative_hazard <- approx(baseline_hazard$time, baseline_hazard$hazard, xout = pred[[object$time_var]], rule = 2)$y
 
     # Calculate the survival probabilities
     survival_prob <- exp(-exp(pred_val) * cumulative_hazard)
@@ -408,8 +429,6 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   pred_results %>%
     set_attr("radiant_pred_data", df_name)
 }
-
-
 
 #' Print method for predict.gbt_survival
 #'
@@ -574,112 +593,68 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
 #' )
 #' plot(result, plots = c("km"), incl = c("age", "sex"), evar_values = list(age = c(60, 70), sex = c(1)))
 #' @export
-plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), seed = 1234, ...) {
+plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), ...) {
   if (is.character(x) || !inherits(x$model, "xgb.Booster")) {
     return(x)
   }
   plot_list <- list()
   ncol <- 1
-  
+
   # Load necessary libraries
   library(survival)
   library(ggplot2)
   library(patchwork)
   library(xgboost)
-  library(dplyr)
-  
+
   # Extract data and model
   dataset <- x$dataset
   time_var <- x$time_var
   status_var <- x$status_var
   model <- x$model
-  
-  # Prepare the dataset with new time labels
-  dataset <- dataset %>%
-    mutate(new_time = ifelse(dataset[[status_var]] == 0, -dataset[[time_var]], dataset[[time_var]]))
-  
-  set.seed(seed)
-  train_idx <- sample(seq_len(nrow(dataset)), size = 0.8 * nrow(dataset))
-  train_data <- dataset[train_idx, ]
-  eval_data <- dataset[-train_idx, ]
-  
-  # Ensure that all levels are present in the training data
-  for (evar in incl) {
-    if (is.factor(train_data[[evar]]) && !is.null(evar_values[[evar]])) {
-      train_data[[evar]] <- factor(train_data[[evar]], levels = evar_values[[evar]])
-      eval_data[[evar]] <- factor(eval_data[[evar]], levels = evar_values[[evar]])
+
+  if ("km" %in% plots) {
+    # Kaplan-Meier Curve
+    for (evar in incl) {
+      if (!evar %in% colnames(dataset)) {
+        stop(paste("Variable", evar, "not found in the dataset."))
+      }
+
+      values <- evar_values[[evar]]
+      if (!is.null(values)) {
+        dataset <- dataset[dataset[[evar]] %in% values, ]
+      }
+
+      surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
+      fit <- survfit(surv_obj ~ dataset[[evar]])
+
+      ggsurvplot <- function(fit, evar, xlab = "Time", ylab = "Survival Probability", ...) {
+        surv_summary <- summary(fit)
+        df <- data.frame(time = surv_summary$time, surv = surv_summary$surv, strata = rep(surv_summary$strata, times = sapply(surv_summary$strata, length)))
+        g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
+          geom_step() +
+          labs(x = xlab, y = ylab) +
+          theme_minimal() +
+          scale_color_discrete(name = evar) +
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) + # Use linewidth instead of size
+          theme(
+            legend.title = element_text(size = 18, face = "bold"),
+            legend.text = element_text(size = 14),
+            axis.title = element_text(size = 18, face = "bold"),
+            axis.text = element_text(size = 14),
+            plot.title = element_text(size = 20)
+          )
+        g
+      }
+
+      plot_list[[evar]] <- ggsurvplot(fit, evar)
     }
+    ncol <- max(ncol, 2)
   }
-  
-  # Create model matrix for the training data
-  dtrain <- model.matrix(~ . - 1, data = train_data[, incl, drop = FALSE])
-  train_dmatrix <- xgb.DMatrix(data = dtrain, label = train_data$new_time)
-  
-  # Ensure the same columns in evaluation data
-  deval <- model.matrix(~ . - 1, data = eval_data[, incl, drop = FALSE])
-  
-  # Calculate cumulative hazard function
-  base_hazard <- basehaz(coxph(Surv(train_data[[time_var]], train_data[[status_var]]) ~ 1, data = train_data), centered = FALSE)
-  
-  for (evar in incl) {
-    if (!evar %in% colnames(dataset)) {
-      stop(paste("Variable", evar, "not found in the dataset."))
-    }
-    
-    values <- evar_values[[evar]]
-    if (!is.null(values)) {
-      eval_data <- eval_data[eval_data[[evar]] %in% values, ]
-    }
-    
-    # Ensure that all levels are present in the evaluation data
-    eval_data[[evar]] <- factor(eval_data[[evar]], levels = values)
-    
-    # Prepare data for prediction
-    dtest <- xgb.DMatrix(data = deval)
-    pred <- predict(model, dtest)
-    
-    # Compute survival probabilities
-    surv_probs <- t(sapply(1:nrow(eval_data), function(i) {
-      exp(-cumsum(base_hazard$hazard) * exp(pred[i]))
-    }))
-    
-    # Prepare data for plotting
-    df_list <- list()
-    for (i in seq_len(nrow(eval_data))) {
-      df <- data.frame(
-        time = base_hazard$time,
-        surv = surv_probs[i, ],
-        strata = as.factor(rep(eval_data[[evar]][i], length(base_hazard$time)))
-      )
-      df_list[[i]] <- df
-    }
-    df <- bind_rows(df_list)
-    
-    # Plot survival curves
-    ggsurvplot <- function(df, evar, xlab = "Time", ylab = "Survival Probability", ...) {
-      g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
-        geom_step(na.rm = TRUE) +
-        labs(x = xlab, y = ylab) +
-        theme_minimal() +
-        scale_color_discrete(name = evar) +
-        geom_hline(yintercept = 0.5, linetype = "dotted", color = "red", linewidth = 1) +
-        theme(
-          legend.title = element_text(size = 18, face = "bold"),
-          legend.text = element_text(size = 14),
-          axis.title = element_text(size = 18, face = "bold"),
-          axis.text = element_text(size = 14),
-          plot.title = element_text(size = 20)
-        ) +
-        scale_x_log10() 
-      g
-    }
-    
-    plot_list[[evar]] <- ggsurvplot(df, evar)
-  }
-  
+
+
   if ("importance" %in% plots) {
     importance <- xgb.importance(model = model)
-    
+
     importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
       geom_bar(stat = "identity") +
       coord_flip() +
@@ -690,11 +665,11 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         axis.text = element_text(size = 14),
         plot.title = element_text(size = 20)
       )
-    
+
     plot_list[["importance"]] <- importance_plot
     ncol <- max(ncol, 1)
   }
-  
+
   if (length(plot_list) > 0) {
     if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
       return(plot_list[["importance"]])
@@ -706,6 +681,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
