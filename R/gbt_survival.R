@@ -52,13 +52,14 @@
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
-                          max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
-                          min_child_weight = c(1), subsample = c(1),
-                          nrounds = c(100), early_stopping_rounds = 10,
-                          nthread = 12, wts = "None", seed = 1234,
-                          data_filter = "", arr = "", rows = NULL,
-                          envir = parent.frame(), cox_regression = FALSE,
-                          nfold = 10, ...) {
+                         max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
+                         min_child_weight = c(1), subsample = c(1),
+                         nrounds = c(100), early_stopping_rounds = 10,
+                         nthread = 12, wts = "None", seed = 1234,
+                         data_filter = "", arr = "", rows = NULL,
+                         envir = parent.frame(), cox_regression = FALSE,
+                         nfold = 10, test_size = 0.2, ...) {
+
   # Check and install survcomp package if not already installed
   if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
@@ -106,13 +107,25 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
              add_class("gbt_survival"))
   }
 
-  ## Create new column indicating time label with sign
-  dataset <- dataset %>%
-    mutate(new_time = dataset[[time_var]],
-           new_time = ifelse(dataset[[status_var]] == 0, -new_time, new_time))
-
   set.seed(seed)
-  folds <- sample(rep(seq_len(nfold), length.out = nrow(dataset)))
+
+  # Split dataset into training and testing sets
+  train_index <- sample(seq_len(nrow(dataset)), size = (1 - test_size) * nrow(dataset))
+  train_data <- dataset[train_index, ]
+  test_data <- dataset[-train_index, ]
+
+  # Create new column indicating time label with sign for both training and testing sets
+  train_data <- train_data %>%
+    mutate(new_time = ifelse(train_data[[status_var]] == 0, -train_data[[time_var]], train_data[[time_var]]))
+
+  test_data <- test_data %>%
+    mutate(new_time = ifelse(test_data[[status_var]] == 0, -test_data[[time_var]], test_data[[time_var]]))
+
+  # Prepare the data for xgboost
+  dtrain <- xgb.DMatrix(data = model.matrix(~ . - 1, data = train_data[, evar, drop = FALSE]), label = train_data$new_time)
+  dtest <- xgb.DMatrix(data = model.matrix(~ . - 1, data = test_data[, evar, drop = FALSE]), label = test_data$new_time)
+
+  folds <- sample(rep(seq_len(nfold), length.out = nrow(train_data)))
 
   best_model <- NULL
   best_metric_value <- Inf
@@ -129,8 +142,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
               cv_results <- data.frame(fold = integer(), metric_value = numeric())
 
               for (fold in 1:nfold) {
-                train_data <- dataset[folds != fold, ]
-                eval_data <- dataset[folds == fold, ]
+                fold_train_data <- train_data[folds != fold, ]
+                fold_eval_data <- train_data[folds == fold, ]
 
                 gbt_input <- list(
                   max_depth = d,
@@ -147,19 +160,19 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 )
 
                 ## adding data
-                dtx <- model.matrix(~ . - 1, data = train_data[, evar, drop = FALSE])
-                y_lower <- train_data$new_time
+                dtx <- model.matrix(~ . - 1, data = fold_train_data[, evar, drop = FALSE])
+                y_lower <- fold_train_data$new_time
 
-                dtrain <- xgb.DMatrix(data = dtx, label = y_lower)
+                dtrain_fold <- xgb.DMatrix(data = dtx, label = y_lower)
 
                 ## Check that dty has the same length as the number of rows in dtx
                 if (length(y_lower) != nrow(dtx)) {
                   stop("The length of labels must equal to the number of rows in the input data")
                 }
 
-                watchlist <- list(train = dtrain)
+                watchlist <- list(train = dtrain_fold)
 
-                gbt_input$data <- dtrain
+                gbt_input$data <- dtrain_fold
                 gbt_input$watchlist <- watchlist
 
                 seed <- gsub("[^0-9]", "", seed)
@@ -192,7 +205,10 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                   nrounds = nr
                 )
                 eval_log <- model$evaluation_log
-                best_model$model <- dataset
+                best_model$train_data <- train_data
+                best_model$test_data <- test_data
+                best_model$dtrain <- dtrain
+                best_model$dtest <- dtest
                 best_model$best_tuning_parameters <- best_tuning_parameters
                 best_model$best_metric_value <- best_metric_value
                 best_model$evaluation_log <- eval_log
@@ -209,15 +225,15 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     cox_c_indices <- numeric()
 
     for (fold in 1:nfold) {
-      train_data <- dataset[folds != fold, ]
-      eval_data <- dataset[folds == fold, ]
+      fold_train_data <- train_data[folds != fold, ]
+      fold_eval_data <- train_data[folds == fold, ]
 
       formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
-      cox_model <- coxph(formula, data = train_data)
+      cox_model <- coxph(formula, data = fold_train_data)
 
       # Calculate the concordance index (C-index) for the Cox model
-      cox_pred <- predict(cox_model, newdata = eval_data, type = "risk")
-      c_index <- concordance.index(cox_pred, eval_data[[time_var]], eval_data[[status_var]])$c.index
+      cox_pred <- predict(cox_model, newdata = fold_eval_data, type = "risk")
+      c_index <- concordance.index(cox_pred, fold_eval_data[[time_var]], fold_eval_data[[status_var]])$c.index
       cox_c_indices <- c(cox_c_indices, c_index)
     }
 
@@ -344,7 +360,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #'
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
-                                  dec = 3, envir = parent.frame(), cox_regression = FALSE, ...) {
+                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, ...) {
   if (is.character(object)) {
     return(object)
   }
@@ -357,66 +373,52 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   } else {
     df_name <- pred_data
   }
+  explanatory_vars <- names(object$best_model$test_data)[!(names(object$best_model$test_data) %in% c("RowID", "new_time", "time", "status"))]
 
-  pfun_gbt <- function(model, pred, se, conf_lev) {
-    # Ensure the factor levels in the prediction data are the
-    # same as in the data used for estimation
-    est_data <- model$model
-    for (i in colnames(pred)) {
-      if (is.factor(est_data[[i]])) {
-        pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
-      }
-    }
-
-    # Create the DMatrix for xgboost
-    pred_matrix <- xgb.DMatrix(data = as.matrix(pred))
-
-    # Predict the hazard function
-    pred_val <- predict(model, pred_matrix)
-
-    # Compute survival probabilities from hazard function
-    survival_prob <- exp(-pred_val)
-
-    # Convert predictions to data frame
-    pred_val_df <- data.frame(SurvivalProbability = survival_prob)
-
-    pred_val_df
-  }
-
-  pfun_cox <- function(model, pred, se, conf_lev) {
-    # Predict using the Cox regression model
-    pred_val <- predict(model, newdata = pred, type = "lp")
-
-    # Compute the cumulative baseline hazard function
-    baseline_hazard <- basehaz(model, centered = FALSE)
-
-    # Interpolate the cumulative baseline hazard at the predicted times
-    cumulative_hazard <- approx(baseline_hazard$time, baseline_hazard$hazard, xout = pred[[object$time_var]], rule = 2)$y
-
-    # Calculate the survival probabilities
-    survival_prob <- exp(-exp(pred_val) * cumulative_hazard)
-
-    # Convert predictions to data frame
-    pred_val_df <- data.frame(SurvivalProbability = survival_prob)
-
-    pred_val_df
-  }
-
-  pfun <- if (cox_regression) {
+  if (cox_regression) {
     if (!is.null(object$cox_model)) {
-      function(model, pred, se, conf_lev) pfun_cox(object$cox_model, pred, se, conf_lev)
+      # Predict using the Cox regression model
+      survival_prob <- predict(object$cox_model, newdata = object$test_data, type = "expected")
+      survival_prob <- exp(-survival_prob)
+
+      # Convert predictions to data frame
+      survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
     }
   } else {
-    pfun_gbt
+    # Extract time and status variables
+    pred.train <- log(predict(object$best_model, object$best_model$dtrain))
+    pred.test  <- log(predict(object$best_model, object$best_model$dtest))
+    time_interest <- sort(unique(object$train_data$new_time[object$train_data$status == 1]))
+    basehaz_cum <- basehaz.gbm(object$train_data$time, object$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
+    surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
+    # Extract explanatory variables from xgb.DMatrix
+
+    # Combine predictions with explanatory variables from the test set
+    survival_prob_df <- data.frame(SurvivalProbability = surf.i )
   }
+  # Create the formatted output
+  header <- paste(
+    "Survival Analysis",
+    paste("Data                 :", df_name),
+    "Response variable    : ",
+    paste("Explanatory variables:", paste(explanatory_vars, collapse = ", ")),
+    paste("Prediction dataset   :", df_name),
+    paste("Rows shown           :", min(10, nrow(survival_prob_df)), "of", nrow(survival_prob_df)),
+    sep = "\n"
+  )
 
-  pred_results <- predict_model(object, pfun, "gbt_survival.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir)
+  # Limit the number of rows shown to 10 for the output
+  survival_prob_df_shown <- head(survival_prob_df, 20)
 
-  pred_results %>%
+  # Print the header and the data frame
+  cat(header, "\n\n")
+
+  survival_prob_df %>%
     set_attr("radiant_pred_data", df_name)
 }
+
 
 #' Print method for predict.gbt_survival
 #'
