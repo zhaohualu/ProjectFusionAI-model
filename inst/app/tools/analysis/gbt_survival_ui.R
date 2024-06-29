@@ -19,7 +19,9 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$arr <- if (input$show_filter) input$data_arrange else ""
   gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
-  gbt_survival_args$cox_regression <- (input$model_selection == "cox")  # Adjusted line
+  gbt_survival_args$cox_regression <- (input$model_selection == "cox")
+  gbt_survival_args$time_var <- input$gbt_survival_time_var
+  gbt_survival_args$status_var <- input$gbt_survival_status_var
   for (i in r_drop(names(gbt_survival_args))) {
     if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
@@ -70,6 +72,7 @@ gbt_survival_pred_inputs <- reactive({
   }
   gbt_survival_pred_args$evar <- input$gbt_survival_evar
   gbt_survival_pred_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
+  gbt_survival_pred_args$status_var <- input$gbt_survival_status_var
   gbt_survival_pred_args
 })
 
@@ -261,7 +264,6 @@ output$ui_gbt_survival <- renderUI({
     )
   )
 })
-
 
 gbt_survival_available <- reactive({
   req(input$dataset)
