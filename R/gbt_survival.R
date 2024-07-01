@@ -583,7 +583,7 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
 #' )
 #' plot(result, plots = c("km"), incl = c("age", "sex"), evar_values = list(age = c(60, 70), sex = c(1)))
 #' @export
-plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), ...) {
+plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), cox_regression = FALSE, ...) {
   if (is.character(x) || !inherits(x$model, "xgb.Booster")) {
     return(x)
   }
@@ -595,6 +595,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(ggplot2)
   library(patchwork)
   library(xgboost)
+  library(survminer)  # for ggsurvplot
 
   # Extract data and model
   dataset <- x$dataset
@@ -603,44 +604,84 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   model <- x$model
 
   if ("km" %in% plots) {
-    # Kaplan-Meier Curve
-    for (evar in incl) {
-      if (!evar %in% colnames(dataset)) {
-        stop(paste("Variable", evar, "not found in the dataset."))
+    surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
+
+    if (cox_regression) {
+      # Create a single Cox regression model using all included variables
+      cox_fit <- x$cox_model
+
+      for (evar in incl) {
+        unique_values <- unique(dataset[[evar]])
+
+        # Create new data frames with unique values of the covariate of interest
+        new_data_list <- lapply(unique_values, function(val) {
+          new_data <- dataset[1, , drop = FALSE]
+          new_data[rep(1, length(unique_values)), ]
+          new_data[[evar]] <- val
+          new_data
+        })
+
+        combined_new_data <- do.call(rbind, new_data_list)
+        fit <- survfit(cox_fit, newdata = combined_new_data)
+
+        # Prepare labels for the legend
+        legend_labs <- paste(evar, "=", unique_values)
+
+        # Plot survival curves
+        ggsurv <- ggsurvplot(fit,
+                             conf.int = TRUE,
+                             legend.labs = legend_labs,
+                             ggtheme = theme_minimal(),
+                             data = combined_new_data)
+
+        # Customize plot
+        cox_plot <- ggsurv$plot +
+          labs(title = paste("Cox Regression Model: ", evar), x = "Time", y = "Survival Probability") +
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1)
+
+        plot_list[[paste("cox_regression", evar, sep = "_")]] <- cox_plot
       }
+    } else {
+      # Add surf.i plot for non-Cox regression, split by variables
+      for (evar in incl) {
+        values <- evar_values[[evar]]
+        if (is.null(values)) {
+          values <- unique(dataset[[evar]])
+        }
 
-      values <- evar_values[[evar]]
-      if (!is.null(values)) {
-        dataset <- dataset[dataset[[evar]] %in% values, ]
-      }
+        surf_df <- data.frame()
 
-      surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
-      fit <- survfit(surv_obj ~ dataset[[evar]])
+        for (val in values) {
+          subset_data <- dataset[dataset[[evar]] == val, ]
 
-      ggsurvplot <- function(fit, evar, xlab = "Time", ylab = "Survival Probability", ...) {
-        surv_summary <- summary(fit)
-        df <- data.frame(time = surv_summary$time, surv = surv_summary$surv, strata = rep(surv_summary$strata, times = sapply(surv_summary$strata, length)))
-        g <- ggplot(df, aes(x = time, y = surv, color = strata)) +
-          geom_step() +
-          labs(x = xlab, y = ylab) +
+          pred.train <- log(predict(x$best_model, x$best_model$dtrain))
+          pred.test <- log(predict(x$best_model, xgboost::xgb.DMatrix(data = as.matrix(subset_data[, setdiff(names(subset_data), c(time_var, status_var))]))))
+          time_interest <- sort(unique(x$train_data$new_time[x$train_data$status == 1]))
+          basehaz_cum <- basehaz.gbm(x$train_data$time, x$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
+          surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
+
+          if (length(surf.i) != length(basehaz_cum)) {
+            warning("Length of surf.i and basehaz_cum do not match. Adjusting lengths.")
+            min_length <- min(length(surf.i), length(basehaz_cum))
+            surf.i <- surf.i[1:min_length]
+            basehaz_cum <- basehaz_cum[1:min_length]
+          }
+
+          surf_df <- rbind(surf_df, data.frame(Time = time_interest[1:length(surf.i)], SurvivalProbability = surf.i, Value = as.factor(val)))
+        }
+
+        surf_plot <- ggplot(surf_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
+          geom_line() +
+          labs(title = paste("Survival Probability over Time (XGB Model):", evar), x = "Time", y = "Survival Probability") +
           theme_minimal() +
-          scale_color_discrete(name = evar) +
-          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) + # Use linewidth instead of size
-          theme(
-            legend.title = element_text(size = 18, face = "bold"),
-            legend.text = element_text(size = 14),
-            axis.title = element_text(size = 18, face = "bold"),
-            axis.text = element_text(size = 14),
-            plot.title = element_text(size = 20)
-          )
-        g
-      }
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
+          scale_color_discrete(name = evar)
 
-      plot_list[[evar]] <- ggsurvplot(fit, evar)
+        plot_list[[paste("surf_i", evar, sep = "_")]] <- surf_plot
+      }
     }
     ncol <- max(ncol, 2)
   }
-
 
   if ("importance" %in% plots) {
     importance <- xgb.importance(model = model)
@@ -664,13 +705,14 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
       return(plot_list[["importance"]])
     } else {
-      combined_plot <- subplot(plot_list, nrows = length(plot_list), shareX = TRUE, shareY = TRUE, titleX = TRUE, titleY = TRUE)
+      combined_plot <- wrap_plots(plot_list, ncol = ncol)
       return(combined_plot)
     }
   } else {
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
