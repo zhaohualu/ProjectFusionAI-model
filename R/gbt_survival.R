@@ -675,7 +675,14 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           labs(title = paste("Survival Probability over Time (XGB Model):", evar), x = "Time", y = "Survival Probability") +
           theme_minimal() +
           geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
-          scale_color_discrete(name = evar)
+          scale_color_discrete(name = evar) +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),
+            legend.title = element_text(size = 18, face = "bold"),
+            legend.text = element_text(size = 14),
+            axis.title = element_text(size = 18, face = "bold"),
+            axis.text = element_text(size = 14)
+          )
 
         plot_list[[paste("surf_i", evar, sep = "_")]] <- surf_plot
       }
@@ -712,7 +719,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
-
 
 
 
