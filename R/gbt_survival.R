@@ -595,7 +595,9 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(ggplot2)
   library(patchwork)
   library(xgboost)
-  library(survminer)  # for ggsurvplot
+  library(survminer)
+  library(caret)
+  # for ggsurvplot
 
   # Extract data and model
   dataset <- x$dataset
@@ -689,23 +691,62 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
     ncol <- max(ncol, 2)
   }
-
   if ("importance" %in% plots) {
-    importance <- xgb.importance(model = model)
+    if (cox_regression) {
+      # Use the predictors specified by the user in incl
+      predictors <- incl
 
-    importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
-      geom_bar(stat = "identity") +
-      coord_flip() +
-      labs(x = "Variable", y = "Importance (Gain)", title = "Feature Importance using XGBoost") +
-      theme_minimal() +
-      theme(
-        axis.title = element_text(size = 18, face = "bold"),
-        axis.text = element_text(size = 14),
-        plot.title = element_text(size = 20)
-      )
+      # Extract precomputed C-index values for the complete model
+      complete_cindex <- x$avg_cox_c_index
 
-    plot_list[["importance"]] <- importance_plot
-    ncol <- max(ncol, 1)
+      # Leave-one-variable-out models
+      leave_one_out_cindex <- sapply(predictors, function(predictor) {
+        formula <- as.formula(paste("Surv(", time_var, ", ", status_var, ") ~ ", paste(setdiff(predictors, predictor), collapse = " + ")))
+        mean(sapply(createFolds(dataset[[status_var]], k = 5), function(index) {
+          train_data <- x$train_data
+          test_data <- x$test_data
+          model <- coxph(formula, data = train_data)
+          cox_pred <- predict(model, newdata = test_data, type = "risk")
+          c_index <- concordance.index(cox_pred, test_data[[time_var]], test_data[[status_var]])$c.index
+          return(c_index)
+        }))
+      })
+
+      # Calculate variable importance
+      importance_scores <- complete_cindex - leave_one_out_cindex
+      importance_df <- data.frame(Variable = predictors, Importance = importance_scores)
+
+      # Create importance plot
+      importance_plot <- ggplot(importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
+        geom_bar(stat = "identity") +
+        coord_flip() +
+        labs(x = "Variable", y = "Importance (C-index difference)", title = "Variable Importance (Cox Regression)") +
+        theme_minimal() +
+        theme(
+          axis.title = element_text(size = 18, face = "bold"),
+          axis.text = element_text(size = 14),
+          plot.title = element_text(size = 20)
+        )
+
+      plot_list[["importance"]] <- importance_plot
+      ncol <- max(ncol, 1)
+    } else {
+      importance <- xgb.importance(model = model)
+
+      importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
+        geom_bar(stat = "identity") +
+        coord_flip() +
+        labs(x = "Variable", y = "Importance (Gain)", title = "Feature Importance using XGBoost") +
+        theme_minimal() +
+        theme(
+          axis.title = element_text(size = 18, face = "bold"),
+          axis.text = element_text(size = 14),
+          plot.title = element_text(size = 20)
+        )
+
+      plot_list[["importance"]] <- importance_plot
+      ncol <- max(ncol, 1)
+    }
   }
 
   if (length(plot_list) > 0) {
@@ -719,6 +760,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
