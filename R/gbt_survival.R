@@ -595,9 +595,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(ggplot2)
   library(patchwork)
   library(xgboost)
-  library(survminer)
-  library(caret)
-  # for ggsurvplot
+  library(survminer)  # for ggsurvplot
+  library(caret)  # for cross-validation
 
   # Extract data and model
   dataset <- x$dataset
@@ -613,21 +612,27 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       cox_fit <- x$cox_model
 
       for (evar in incl) {
-        unique_values <- unique(dataset[[evar]])
+        values <- evar_values[[evar]]
+        if (is.null(values)) {
+          values <- unique(dataset[[evar]])
+        }
 
-        # Create new data frames with unique values of the covariate of interest
-        new_data_list <- lapply(unique_values, function(val) {
-          new_data <- dataset[1, , drop = FALSE]
-          new_data[rep(1, length(unique_values)), ]
+        combined_new_data <- data.frame()
+        legend_labs <- c()
+
+        # Create new data frames for each value
+        for (val in values) {
+          new_data <- dataset[rep(1, length(values)), , drop = FALSE]
           new_data[[evar]] <- val
-          new_data
-        })
+          combined_new_data <- rbind(combined_new_data, new_data)
 
-        combined_new_data <- do.call(rbind, new_data_list)
+          legend_labs <- c(legend_labs, paste(evar, "=", val))
+        }
+
+        # Ensure unique rows in combined_new_data
+        combined_new_data <- unique(combined_new_data)
+
         fit <- survfit(cox_fit, newdata = combined_new_data)
-
-        # Prepare labels for the legend
-        legend_labs <- paste(evar, "=", unique_values)
 
         # Plot survival curves
         ggsurv <- ggsurvplot(fit,
@@ -639,7 +644,14 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         # Customize plot
         cox_plot <- ggsurv$plot +
           labs(title = paste("Cox Regression Model: ", evar), x = "Time", y = "Survival Probability") +
-          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1)
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),
+            axis.title = element_text(size = 18, face = "bold"),
+            axis.text = element_text(size = 14),
+            legend.title = element_text(size = 18, face = "bold"),
+            legend.text = element_text(size = 14)
+          )
 
         plot_list[[paste("cox_regression", evar, sep = "_")]] <- cox_plot
       }
@@ -760,6 +772,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
