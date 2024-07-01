@@ -365,22 +365,22 @@ gbt_survival_plot <- reactive({
     return()
   }
   nr_vars <- length(input$incl)
-  plot_height <- 500
-  plot_width <- 1000
+  plot_height <- 250
+  plot_width <- 700
   if ("km" %in% input$gbt_survival_plots) {
-    plot_height <- max(250, ceiling(nr_vars / 2) * 250)
+    plot_height <- max(150, ceiling(nr_vars / 2) * 150)
   }
   list(plot_width = plot_width, plot_height = plot_height)
 })
 
 gbt_survival_plot_width <- function() {
   gbt_survival_plot() %>%
-    (function(x) if (is.list(x)) x$plot_width else 1000)
+    (function(x) if (is.list(x)) x$plot_width else 700)
 }
 
 gbt_survival_plot_height <- function() {
   gbt_survival_plot() %>%
-    (function(x) if (is.list(x)) x$plot_height else 500)
+    (function(x) if (is.list(x)) x$plot_height else 250)
 }
 
 output$gbt_survival <- renderUI({
@@ -407,7 +407,7 @@ output$gbt_survival <- renderUI({
     tabPanel(
       "Plot",
       download_link("dlp_gbt_survival"),
-      plotOutput("plot_gbt_survival", width = "1900px", height = "800px")
+      plotOutput("plot_gbt_survival", width = "1700px", height = "700px")
     )
   )
 
