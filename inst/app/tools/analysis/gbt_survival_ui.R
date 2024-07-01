@@ -483,7 +483,7 @@ observeEvent(input$create_plot, {
       plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox")
     } else if (km_plots == "importance") {
       result <- do.call(gbt_survival, gbt_surv)
-      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values)
+      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox")
     }
   })
 })
