@@ -22,6 +22,11 @@
 #' @param rows Rows to select from the specified dataset
 #' @param envir Environment to extract data from
 #' @param cox_regression Logical, if TRUE perform Cox regression modeling
+#' @param random_forest Logifical, if TRUE perform Random Forest
+#' @param ntree number of trees
+#' @param mtry the number of variables to randomly sample as candidates at each split
+#' @param nodesize the minimum number of cases a terminal node should hold
+#' @param nsplit Non-negative integer value used to specify random splitting
 #' @param ... Further arguments to pass to xgboost
 #'
 #' @return A list with all variables defined in gbt as an object of class gbt
@@ -58,16 +63,21 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                          nthread = 12, wts = "None", seed = 1234,
                          data_filter = "", arr = "", rows = NULL,
                          envir = parent.frame(), cox_regression = FALSE,
-                         nfold = 10, test_size = 0.2, ...) {
+                         random_forest = FALSE, ntree = c(100), mtry = c(5),
+                         nodesize = c(15), nsplit = c(0), nfold = 10, test_size = 0.2, ...) {
 
-  # Check and install survcomp package if not already installed
+  # Check and install necessary packages if not already installed
   if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
   }
   if (!requireNamespace("survcomp", quietly = TRUE)) {
     BiocManager::install("survcomp")
   }
+  if (!requireNamespace("randomForestSRC", quietly = TRUE)) {
+    install.packages("randomForestSRC")
+  }
   library(survcomp)
+  library(randomForestSRC)
 
   if (time_var %in% evar || status_var %in% evar) {
     return("Time or status variable contained in the set of explanatory variables.\nPlease update model specification." %>%
@@ -244,6 +254,56 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     best_model$avg_cox_c_index <- avg_cox_c_index
   }
 
+  if (random_forest) {
+    # Perform Random Forest survival modeling using hyperparameter tuning and cross-validation
+    best_rf_model <- NULL
+    best_rf_c_index <- -Inf
+    best_rf_params <- list()
+
+    for (nt in ntree) {
+      for (mt in mtry) {
+        for (ns in nodesize) {
+          for (nspl in nsplit) {
+            rf_c_indices <- numeric()
+
+            for (fold in 1:nfold) {
+              fold_train_data <- train_data[folds != fold, ]
+              fold_eval_data <- train_data[folds == fold, ]
+
+              rf_formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
+              rf_model <- rfsrc(rf_formula, data = fold_train_data[, c(evar, time_var, status_var), drop = FALSE],
+                                ntree = nt, mtry = mt, nodesize = ns, nsplit = nspl, importance = TRUE, proximity = TRUE)
+
+              # Calculate the concordance index (C-index) for the Random Forest model
+              rf_pred <- predict(rf_model, newdata = fold_eval_data)$predicted
+              c_index <- concordance.index(rf_pred, fold_eval_data[[time_var]], fold_eval_data[[status_var]])$c.index
+              rf_c_indices <- c(rf_c_indices, c_index)
+            }
+
+            avg_rf_c_index <- mean(rf_c_indices)
+
+            if (avg_rf_c_index > best_rf_c_index) {
+              best_rf_c_index <- avg_rf_c_index
+              best_rf_model <- rf_model
+              best_rf_params <- list(
+                ntree = nt,
+                mtry = mt,
+                nodesize = ns,
+                nsplit = nspl
+              )
+            }
+          }
+        }
+      }
+    }
+
+    # Add Random Forest results to the output
+    best_model$rf_c_indices <- rf_c_indices
+    best_model$avg_rf_c_index <- best_rf_c_index
+    best_model$best_rf_model <- best_rf_model
+    best_model$best_rf_params <- best_rf_params
+  }
+
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
 #' Summary method for the gbt_survival function
@@ -269,7 +329,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (is.character(object)) {
     return(object)
   }
-  cat("(XGBoost) - Survival Analysis\n")
+  cat("Survival Analysis\n")
   cat("Type                 : Survival Analysis")
   cat("\nData                 :", object$df_name)
   if (!is.empty(object$data_filter)) {
@@ -302,8 +362,19 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
         "\n", sep = "")
     cat("n = ", object$cox_model$n, ", number of events = ", sum(object$cox_model$y[, 2]), "\n", sep = "")
     cat("\nCox Model Concordance Index (C-index): ", object$best_model$avg_cox_c_index, "\n", sep = "")
+  } else if (!is.null(object$best_rf_model)) {
+    cat("\nRandom Forest Model:\n")
+    cat("\nBest Hyperparameters:\n")
+    for (param in names(object$best_rf_params)) {
+      cat(paste(param, ":", object$best_rf_params[[param]], "\n"))
+    }
+    cat("\nRandom Forest Model Concordance Index (C-index): ", object$best_model$avg_rf_c_index, "\n", sep = "")
+    if (isTRUE(prn)) {
+      cat("\nRandom Forest Model Details:\n")
+      print(object$best_rf_model)
+    }
   } else {
-    # Extract best tuning parameters if not using Cox regression
+    # Extract best tuning parameters if not using Cox regression or Random Forest
     best_tuning_params <- list(
       max_depth = object$best_model$params$max_depth,
       learning_rate = object$best_model$params$learning_rate,
@@ -337,6 +408,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
 }
+
 
 
 #' Predict method for the gbt_survival function
@@ -772,6 +844,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     message("No plots generated. Please specify the plots to generate using the 'plots' argument.")
   }
 }
+
 
 
 
