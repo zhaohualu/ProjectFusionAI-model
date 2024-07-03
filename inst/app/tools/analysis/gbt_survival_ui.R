@@ -25,7 +25,7 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$time_var <- input$gbt_survival_time_var
   gbt_survival_args$status_var <- input$gbt_survival_status_var
   for (i in r_drop(names(gbt_survival_args))) {
-    if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
+    if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds", "ntree", "mtry", "nodesize", "nsplit")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
     } else {
       gbt_survival_args[[i]] <- input[[paste0("gbt_survival_", i)]]
@@ -186,21 +186,50 @@ output$ui_gbt_survival <- renderUI({
         uiOutput("ui_gbt_survival_status_var"),
         uiOutput("ui_gbt_survival_evar"),
         uiOutput("ui_gbt_survival_wts"),
-        textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
-        textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
-        textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
-        textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
-        textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
-        textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
-        numericInput(
-          "gbt_survival_early_stopping_rounds",
-          label = "Early stopping:", min = 1, max = 10,
-          step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
+        conditionalPanel(
+          condition = "input.model_selection == 'xgboost'",
+          tagList(
+            textInput("gbt_survival_max_depth", "Max depth (comma-separated):", "6"),
+            textInput("gbt_survival_learning_rate", "Learning rate (comma-separated):", "0.3"),
+            textInput("gbt_survival_min_split_loss", "Min split loss (comma-separated):", "0"),
+            textInput("gbt_survival_min_child_weight", "Min child weight (comma-separated):", "1"),
+            textInput("gbt_survival_subsample", "Sub-sample (comma-separated):", "1"),
+            textInput("gbt_survival_nrounds", "# rounds (comma-separated):", "100"),
+            numericInput(
+              "gbt_survival_early_stopping_rounds",
+              label = "Early stopping:", min = 1, max = 10,
+              step = 1, value = state_init("gbt_survival_early_stopping_rounds", 3)
+            ),
+            numericInput(
+              "gbt_survival_seed",
+              label = "Seed:",
+              value = state_init("gbt_survival_seed", 1234)
+            )
+          )
         ),
-        numericInput(
-          "gbt_survival_seed",
-          label = "Seed:",
-          value = state_init("gbt_survival_seed", 1234)
+        conditionalPanel(
+          condition = "input.model_selection == 'cox'",
+          tagList(
+            numericInput(
+              "gbt_survival_seed",
+              label = "Seed:",
+              value = state_init("gbt_survival_seed", 1234)
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.model_selection == 'rf'",
+          tagList(
+            textInput("gbt_survival_ntree", "Number of trees (comma-separated):", "500"),
+            textInput("gbt_survival_mtry", "Number of variables to try at each split (comma-separated):", "3"),
+            textInput("gbt_survival_nodesize", "Minimum size of terminal nodes (comma-separated):", "15"),
+            textInput("gbt_survival_nsplit", "Number of random splits to consider at each node (comma-separated):", "10"),
+            numericInput(
+              "gbt_survival_seed",
+              label = "Seed:",
+              value = state_init("gbt_survival_seed", 1234)
+            )
+          )
         )
       )
     ),
@@ -268,6 +297,7 @@ output$ui_gbt_survival <- renderUI({
   )
 })
 
+
 gbt_survival_available <- reactive({
   req(input$dataset)
   if (not_available(input$gbt_survival_time_var)) {
@@ -307,6 +337,12 @@ observeEvent(input$gbt_survival_run, {
   if (is.empty(gbti$subsample)) gbti$subsample <- 1
   if (is.empty(gbti$nrounds)) gbti$nrounds <- 100
   if (is.empty(gbti$early_stopping_rounds)) gbti["early_stopping_rounds"] <- list(NULL)
+  if (is.empty(gbti$ntree)) gbti$ntree <- 500
+  if (is.empty(gbti$mtry)) gbti$mtry <- 3
+  if (is.empty(gbti$nodesize)) gbti$nodesize <- 15
+  if (is.empty(gbti$nsplit)) gbti$nsplit <- 0
+
+
 
   withProgress(
     message = "Estimating model", value = 1,
@@ -528,6 +564,7 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
 
 
 
