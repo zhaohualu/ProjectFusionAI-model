@@ -432,7 +432,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #'
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
-                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, ...) {
+                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, random_forest = FALSE, ...) {
   if (is.character(object)) {
     return(object)
   }
@@ -457,6 +457,19 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
+    }
+  } else if (random_forest) {
+    if (!is.null(object$best_rf_model)) {
+      # Predict using the Random Forest model
+      rf_pred <- predict(object$best_rf_model, newdata = object$test_data)
+      time_points <- rf_pred$time.interest
+      middle_time_index <- ceiling(length(time_points) / 2)
+      survival_prob <- rf_pred$survival[, middle_time_index]
+
+      # Aggregate survival probabilities at the last time point
+      survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
+    } else {
+      stop("Random Forest model not found in the object. Please ensure random_forest was set to TRUE when calling gbt_survival.")
     }
   } else {
     # Extract time and status variables
