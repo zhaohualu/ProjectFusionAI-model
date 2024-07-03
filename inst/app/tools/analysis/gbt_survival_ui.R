@@ -1,7 +1,8 @@
 # Model selection options
 model_options <- c(
   "XGBoost" = "xgboost",
-  "Cox Regression" = "cox"
+  "Cox Regression" = "cox",
+  "Random Forest" = "rf"
 )
 
 # Gradient Boosted Trees plots
@@ -20,6 +21,7 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_survival_args$dataset <- input$dataset
   gbt_survival_args$cox_regression <- (input$model_selection == "cox")
+  gbt_survival_args$random_forest <- (input$model_selection == "rf")
   gbt_survival_args$time_var <- input$gbt_survival_time_var
   gbt_survival_args$status_var <- input$gbt_survival_status_var
   for (i in r_drop(names(gbt_survival_args))) {
@@ -72,6 +74,7 @@ gbt_survival_pred_inputs <- reactive({
   }
   gbt_survival_pred_args$evar <- input$gbt_survival_evar
   gbt_survival_pred_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
+  gbt_survival_pred_args$random_forest <- if (input$model_selection == "rf") TRUE else FALSE
   gbt_survival_pred_args$status_var <- input$gbt_survival_status_var
   gbt_survival_pred_args
 })
@@ -292,6 +295,11 @@ observeEvent(input$gbt_survival_run, {
   } else {
     gbti$cox_regression <- FALSE
   }
+  if (input$model_selection == "rf") {
+    gbti$random_forest <- TRUE
+  } else {
+    gbti$random_forest <- FALSE
+  }
   if (is.empty(gbti$max_depth)) gbti$max_depth <- 6
   if (is.empty(gbti$learning_rate)) gbti$learning_rate <- 0.3
   if (is.empty(gbti$min_split_loss)) gbti$min_split_loss <- 0.01
@@ -312,6 +320,11 @@ observeEvent(input$gbt_survival_run, {
 # Trigger model re-estimation when the model selection changes
 ## reset prediction settings when the model type changes
 observeEvent(input$cox_regression, {
+  updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
+})
+
+observeEvent(input$random_forest, {
   updateSelectInput(session = session, inputId = "gbt_survival_predict", selected = "none")
   updateSelectInput(session = session, inputId = "gbt_survival_plots", selected = "none")
 })
@@ -478,12 +491,14 @@ observeEvent(input$create_plot, {
     gbt_surv$arr <- gbt_surv$arr
     gbt_surv$rows <- gbt_surv$rows
     gbt_surv$cox_regression <- (input$model_selection == "cox")
+    gbt_surv$random_forest <- (input$model_selection == "rf")
     if (km_plots == "km") {
       result <- do.call(gbt_survival, gbt_surv)
       plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox")
     } else if (km_plots == "importance") {
       result <- do.call(gbt_survival, gbt_surv)
-      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox")
+      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox",
+           random_forest = input$model_selection == "rf")
     }
   })
 })
@@ -513,7 +528,6 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
-
 
 
 
