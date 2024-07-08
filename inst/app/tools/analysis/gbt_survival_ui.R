@@ -530,7 +530,8 @@ observeEvent(input$create_plot, {
     gbt_surv$random_forest <- (input$model_selection == "rf")
     if (km_plots == "km") {
       result <- do.call(gbt_survival, gbt_surv)
-      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox")
+      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox",
+           random_forest = input$model_selection == "rf")
     } else if (km_plots == "importance") {
       result <- do.call(gbt_survival, gbt_surv)
       plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox",
@@ -564,6 +565,7 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
 
 
 
