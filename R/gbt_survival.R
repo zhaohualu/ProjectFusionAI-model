@@ -462,11 +462,20 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     if (!is.null(object$best_rf_model)) {
       # Predict using the Random Forest model
       rf_pred <- predict(object$best_rf_model, newdata = object$test_data)
-      time_points <- rf_pred$time.interest
-      middle_time_index <- ceiling(length(time_points) / 2)
-      survival_prob <- rf_pred$survival[, middle_time_index]
 
-      # Aggregate survival probabilities at the last time point
+      # Calculate survival probabilities at the corresponding event or censored time for each observation
+      survival_prob <- sapply(seq_len(nrow(object$test_data)), function(i) {
+        time_point <- object$test_data$time[i]
+        if (time_point %in% rf_pred$time.interest) {
+          return(rf_pred$survival[i, which(rf_pred$time.interest == time_point)])
+        } else {
+          # If the time point is not in the time.interest, use the closest time point
+          closest_time <- rf_pred$time.interest[which.min(abs(rf_pred$time.interest - time_point))]
+          return(rf_pred$survival[i, which(rf_pred$time.interest == closest_time)])
+        }
+      })
+
+      # Convert predictions to data frame
       survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
     } else {
       stop("Random Forest model not found in the object. Please ensure random_forest was set to TRUE when calling gbt_survival.")
@@ -668,7 +677,7 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
 #' )
 #' plot(result, plots = c("km"), incl = c("age", "sex"), evar_values = list(age = c(60, 70), sex = c(1)))
 #' @export
-plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), cox_regression = FALSE, ...) {
+plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), cox_regression = FALSE, random_forest = FALSE, ...) {
   if (is.character(x) || !inherits(x$model, "xgb.Booster")) {
     return(x)
   }
@@ -682,6 +691,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(xgboost)
   library(survminer)  # for ggsurvplot
   library(caret)  # for cross-validation
+  library(randomForestSRC)  # for random forest survival
 
   # Extract data and model
   dataset <- x$dataset
@@ -739,6 +749,54 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           )
 
         plot_list[[paste("cox_regression", evar, sep = "_")]] <- cox_plot
+      }
+    } else if (random_forest) {
+      # Create a Random Forest Survival model using all included variables
+      rf_fit <- x$best_rf_model
+      test_data <- x$test_data
+      for (evar in incl) {
+        values <- evar_values[[evar]]
+        if (is.null(values)) {
+          values <- unique(dataset[[evar]])
+        }
+
+        combined_new_data <- data.frame()
+        legend_labs <- c()
+
+        # Create new data frames for each value
+        for (val in values) {
+          new_data <- test_data[rep(1, length(values)), , drop = FALSE]
+          new_data[[evar]] <- val
+          combined_new_data <- rbind(combined_new_data, new_data)
+
+          legend_labs <- c(legend_labs, paste(evar, "=", val))
+        }
+
+        # Ensure unique rows in combined_new_data
+        combined_new_data <- unique(combined_new_data)
+
+        rf_pred <- predict(rf_fit, newdata = combined_new_data)
+
+        # Create survival probabilities data frame
+        surv_df <- data.frame(Time = rep(rf_pred$time.interest, each = nrow(combined_new_data)),
+                              SurvivalProbability = as.vector(t(rf_pred$survival)),
+                              Value = rep(legend_labs, each = length(rf_pred$time.interest)))
+
+        # Plot survival curves
+        rf_plot <- ggplot(surv_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
+          geom_line() +
+          labs(title = paste("Random Forest Survival Model: ", evar), x = "Time", y = "Survival Probability") +
+          theme_minimal() +
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),
+            axis.title = element_text(size = 18, face = "bold"),
+            axis.text = element_text(size = 14),
+            legend.title = element_text(size = 18, face = "bold"),
+            legend.text = element_text(size = 14)
+          )
+
+        plot_list[[paste("rf_survival", evar, sep = "_")]] <- rf_plot
       }
     } else {
       # Add surf.i plot for non-Cox regression, split by variables
@@ -827,7 +885,27 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
 
       plot_list[["importance"]] <- importance_plot
       ncol <- max(ncol, 1)
-    } else {
+    }  else if (random_forest) {
+      # Use the Variable Importance (VIMP) for the Random Forest model
+      rf_fit <- x$best_rf_model
+      importance <- vimp.rfsrc(rf_fit, importance = "permute")$importance
+      importance_df <- data.frame(Variable = names(importance), Importance = importance)
+
+      # Create importance plot
+      importance_plot <- ggplot(importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
+        geom_bar(stat = "identity") +
+        coord_flip() +
+        labs(x = "Variable", y = "Importance (VIMP)", title = "Variable Importance (Random Forest)") +
+        theme_minimal() +
+        theme(
+          axis.title = element_text(size = 18, face = "bold"),
+          axis.text = element_text(size = 14),
+          plot.title = element_text(size = 20)
+        )
+
+      plot_list[["importance"]] <- importance_plot
+      ncol <- max(ncol, 1)
+    }else {
       importance <- xgb.importance(model = model)
 
       importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
