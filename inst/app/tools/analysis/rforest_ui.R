@@ -1,3 +1,4 @@
+
 rf_plots <- c(
   "None" = "none",
   "Permutation Importance" = "vip",
@@ -19,6 +20,14 @@ rf_inputs <- reactive({
   for (i in r_drop(names(rf_args))) {
     rf_args[[i]] <- input[[paste0("rf_", i)]]
   }
+
+  # Parse the comma-separated values for hyperparameters
+  rf_args$mtry <- as.numeric(unlist(strsplit(input$rf_mtry, ",")))
+  rf_args$num.trees <- as.numeric(unlist(strsplit(input$rf_num_trees, ",")))
+  rf_args$min.node.size <- as.numeric(unlist(strsplit(input$rf_min_node_size, ",")))
+  rf_args$sample.fraction <- as.numeric(unlist(strsplit(input$rf_sample_fraction, ",")))
+  rf_args$num.threads <- as.numeric(unlist(strsplit(input$rf_num_threads, ",")))
+
   rf_args
 })
 
@@ -80,7 +89,8 @@ rf_pred_plot_inputs <- reactive({
   }
   rf_pred_plot_args
 })
-library(shinyBS)
+
+
 output$ui_rf_rvar <- renderUI({
   req(input$rf_type)
 
@@ -106,23 +116,9 @@ output$ui_rf_rvar <- renderUI({
     label = HTML("<b>Response variable:</b>"),
     choices = vars,
     selected = state_single("rf_rvar", vars, init),
-    multiple = FALSE)
-
+    multiple = FALSE
+  )
 })
-
-#output$ui_rf_lev <- renderUI({
-#req(input$rf_type == "classification")
-#req(available(input$rf_rvar))
-#levs <- .get_data()[[input$rf_rvar]] %>%
-#as_factor() %>%
-#levels()
-
-#init <- if (is.empty(input$logit_lev)) isolate(input$rf_lev) else input$logit_lev
-#selectInput(
-#inputId = "rf_lev", label = "Choose first level:",
-#choices = levs,
-#selected = state_init("rf_lev", init))
-#})
 
 output$ui_rf_evar <- renderUI({
   if (not_available(input$rf_rvar)) {
@@ -148,7 +144,6 @@ output$ui_rf_evar <- renderUI({
     size = min(10, length(vars)),
     selectize = FALSE
   )
-
 })
 
 # function calls generate UI elements
@@ -261,36 +256,32 @@ output$ui_rf <- renderUI({
         uiOutput("ui_rf_wts"),
         with(tags, table(
           tr(
-            td(numericInput(
+            td(textInput(
               "rf_mtry",
-              label = HTML("<b>mtry:</b> represents the number of variables randomly sampled as candidates at each split when building trees"), min = 1, max = 20,
-              value = state_init("rf_mtry", 1)
+              label = HTML("<b>mtry:</b> (comma-separated values)"), value = state_init("rf_mtry", "1")
             ), width = "50%"),
-            td(numericInput(
-              "rf_num.trees",
-              label = HTML("<b>Number of trees:</b>"), min = 1, max = 1000,
-              value = state_init("rf_num.trees", 100)
+            td(textInput(
+              "rf_num_trees",
+              label = HTML("<b>Number of trees:</b> (comma-separated values)"), value = state_init("rf_num_trees", "100")
             ), width = "50%")
           ),
           width = "100%"
         )),
         with(tags, table(
           tr(
-            td(numericInput(
-              "rf_min.node.size",
-              label = HTML("<b>Min node size:</b> Specifiy the minimum number of observations in a terminal node. Setting it lower leads to more splits that are performed until the terminal nodes"), min = 1, max = 100,
-              step = 1, value = state_init("rf_min.node.size", 1)
+            td(textInput(
+              "rf_min_node_size",
+              label = HTML("<b>Min node size:</b> (comma-separated values)"), value = state_init("rf_min_node_size", "1")
             ), width = "50%"),
-            td(numericInput(
-              "rf_sample.fraction",
-              label = HTML("<b>Sample fraction:</b> Specifiy the fraction of observations to be used in each tree"),
-              min = 0, max = 1, step = 0.1,
-              value = state_init("rf_sample.fraction", 1)
+            td(textInput(
+              "rf_sample_fraction",
+              label = HTML("<b>Sample fraction:</b> (comma-separated values)"), value = state_init("rf_sample_fraction", "1")
             ), width = "50%")
           ),
           width = "100%"
         )),
-        numericInput("rf_seed", label = HTML("<b>Seed:</b> refers to the initial value used by the random number generator that controls the randomness of the model-building process"), value = state_init("rf_seed", 1234))
+        textInput("rf_num_threads", label = HTML("<b>Number of threads:</b> (comma-separated values)"), value = state_init("rf_num_threads", "12")),
+        numericInput("rf_seed", label = HTML("<b>Seed:</b>"), value = state_init("rf_seed", 1234))
       ),
       conditionalPanel(
         condition = "input.tabs_rf == 'Predict'",
@@ -489,10 +480,10 @@ rf_available <- reactive({
   nr_evar <- length(rfi$evar)
   if (rfi$mtry > nr_evar) {
     rfi$mtry <- nr_evar
-    updateNumericInput(session, "rf_mtry", value = nr_evar)
+    updateTextInput(session, "rf_mtry", value = nr_evar)
   } else if (rfi$mtry < 0) {
     rfi$mtry <- 1
-    updateNumericInput(session, "rf_mtry", value = 1)
+    updateTextInput(session, "rf_mtry", value = 1)
   }
 
   if (is.empty(rfi$num.trees)) rfi$num.trees <- 100
@@ -748,4 +739,5 @@ observeEvent(input$modal_rf_screenshot, {
   rf_report()
   removeModal() ## remove shiny modal after save
 })
+
 
