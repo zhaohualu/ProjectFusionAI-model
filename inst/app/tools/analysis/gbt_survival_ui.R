@@ -297,7 +297,6 @@ output$ui_gbt_survival <- renderUI({
   )
 })
 
-
 gbt_survival_available <- reactive({
   req(input$dataset)
   if (not_available(input$gbt_survival_time_var)) {
@@ -341,8 +340,6 @@ observeEvent(input$gbt_survival_run, {
   if (is.empty(gbti$mtry)) gbti$mtry <- 3
   if (is.empty(gbti$nodesize)) gbti$nodesize <- 15
   if (is.empty(gbti$nsplit)) gbti$nsplit <- 0
-
-
 
   withProgress(
     message = "Estimating model", value = 1,
@@ -448,7 +445,7 @@ output$gbt_survival <- renderUI({
       conditionalPanel(
         "input.gbt_survival_pred_plot == true",
         download_link("dlp_gbt_survival_pred"),
-        plotOutput("predict_plot_gbt_survival", width = "100%", height = "100%")
+        plotlyOutput("predict_plot_gbt_survival", width = "100%", height = "100%")
       ),
       download_link("dl_gbt_survival_pred"), br(),
       verbatimTextOutput("predict_gbt_survival")
@@ -456,7 +453,7 @@ output$gbt_survival <- renderUI({
     tabPanel(
       "Plot",
       download_link("dlp_gbt_survival"),
-      plotOutput("plot_gbt_survival", width = "1700px", height = "700px")
+      plotlyOutput("plot_gbt_survival", width = "1700px", height = "700px")
     )
   )
 
@@ -491,7 +488,7 @@ observeEvent(input$create_plot, {
   req(input$incl)
   req(input$gbt_survival_evar)
 
-  output$plot_gbt_survival <- renderPlot({
+  output$plot_gbt_survival <- renderPlotly({
     validate(
       need(input$incl, "Please select variables to include in the KM plot."),
       need(input$gbt_survival_evar, "Please select explanatory variables.")
@@ -565,6 +562,8 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
+
 
 
 
