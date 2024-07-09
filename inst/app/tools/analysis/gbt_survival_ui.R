@@ -58,7 +58,7 @@ gbt_survival_pred_inputs <- reactive({
   for (i in names(gbt_survival_pred_args)) {
     gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival_", i)]]
   }
-
+  
   gbt_survival_pred_args$pred_cmd <- gbt_survival_pred_args$pred_data <- ""
   if (input$gbt_survival_predict == "cmd") {
     gbt_survival_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_survival_pred_cmd) %>%
@@ -340,7 +340,7 @@ observeEvent(input$gbt_survival_run, {
   if (is.empty(gbti$mtry)) gbti$mtry <- 3
   if (is.empty(gbti$nodesize)) gbti$nodesize <- 15
   if (is.empty(gbti$nsplit)) gbti$nsplit <- 0
-
+  
   withProgress(
     message = "Estimating model", value = 1,
     {
@@ -382,14 +382,14 @@ observeEvent(input$random_forest, {
   if (is.empty(input$gbt_survival_predict, "none")) {
     return("** Select prediction input **")
   }
-
+  
   if ((input$gbt_survival_predict == "data" || input$gbt_survival_predict == "datacmd") && is.empty(input$gbt_survival_pred_data)) {
     return("** Select data for prediction **")
   }
   if (input$gbt_survival_predict == "cmd" && is.empty(input$gbt_survival_pred_cmd)) {
     return("** Enter prediction commands **")
   }
-
+  
   withProgress(message = "Generating predictions", value = 1, {
     gbti <- gbt_survival_pred_inputs()
     gbti$object <- .gbt_survival()
@@ -432,7 +432,7 @@ gbt_survival_plot_height <- function() {
 output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
-
+  
   # three separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
@@ -445,7 +445,7 @@ output$gbt_survival <- renderUI({
       conditionalPanel(
         "input.gbt_survival_pred_plot == true",
         download_link("dlp_gbt_survival_pred"),
-        plotlyOutput("predict_plot_gbt_survival", width = "100%", height = "100%")
+        plotlyOutput("predict_plot_gbt_survival", width = "80%", height = "90%")
       ),
       download_link("dl_gbt_survival_pred"), br(),
       verbatimTextOutput("predict_gbt_survival")
@@ -453,10 +453,10 @@ output$gbt_survival <- renderUI({
     tabPanel(
       "Plot",
       download_link("dlp_gbt_survival"),
-      plotlyOutput("plot_gbt_survival", width = "1700px", height = "700px")
+      plotlyOutput("plot_gbt_survival", width = "900px", height = "600px")
     )
   )
-
+  
   stat_tab_panel(
     menu = "Model > Trees",
     tool = "Gradient Boosted Trees",
@@ -473,7 +473,7 @@ output$gbt_survival <- renderUI({
   } else if (is.empty(input$gbt_survival_plots, "none")) {
     return("Please select a plot from the drop-down menu")
   }
-
+  
   pinp <- gbt_survival_plot_inputs()
   pinp$shiny <- TRUE
   check_for_pdp_pred_plots("gbt_survival")
@@ -487,7 +487,7 @@ observeEvent(input$create_plot, {
   req(input$gbt_survival_plots)
   req(input$incl)
   req(input$gbt_survival_evar)
-
+  
   output$plot_gbt_survival <- renderPlotly({
     validate(
       need(input$incl, "Please select variables to include in the KM plot."),
@@ -502,12 +502,12 @@ observeEvent(input$create_plot, {
       as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
     })
     names(km_evar_values) <- km_incl
-
+    
     gbt_surv$plots <- km_plots
     gbt_surv$incl <- km_incl
     gbt_surv$evar_values <- km_evar_values
     gbt_surv$dataset <- dataset
-
+    
     gbt_surv$time_var <- input$gbt_survival_time_var
     gbt_surv$status_var <- input$gbt_survival_status_var
     gbt_surv$evar <- input$gbt_survival_evar
@@ -562,7 +562,6 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
-
 
 
 
