@@ -27,13 +27,13 @@ cv.crtree(
 
 \item{pcp}{Complexity parameter to use for pruning}
 
-\item{seed}{Random seed to use as the starting point}
-
 \item{trace}{Print progress}
 
 \item{fun}{Function to use for model evaluation (e.g., auc for classification or RMSE for regression)}
 
 \item{...}{Additional arguments to be passed to 'fun'}
+
+\item{Random}{seed to use as the starting point}
 }
 \value{
 A data.frame sorted by the mean, sd, min, and max of the performance metric
