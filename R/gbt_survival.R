@@ -720,10 +720,16 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
 
           # Create new data frames for each value
           for (val in values) {
-            new_data <- dataset[rep(1, length(values)), , drop = FALSE]
+            new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
             new_data[[evar]] <- val
+            for (covariate in setdiff(names(dataset), c(time_var, status_var, evar))) {
+              if (is.numeric(dataset[[covariate]])) {
+                new_data[[covariate]] <- mean(dataset[[covariate]], na.rm = TRUE)
+              } else {
+                new_data[[covariate]] <- sort(unique(dataset[[covariate]]))[1]
+              }
+            }
             combined_new_data <- rbind(combined_new_data, new_data)
-
             legend_labs <- c(legend_labs, paste(evar, "=", val))
           }
 
@@ -771,10 +777,16 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
 
           # Create new data frames for each value
           for (val in values) {
-            new_data <- test_data[rep(1, length(values)), , drop = FALSE]
+            new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
             new_data[[evar]] <- val
+            for (covariate in setdiff(names(dataset), c(time_var, status_var, evar))) {
+              if (is.numeric(dataset[[covariate]])) {
+                new_data[[covariate]] <- mean(dataset[[covariate]], na.rm = TRUE)
+              } else {
+                new_data[[covariate]] <- sort(unique(dataset[[covariate]]))[1]
+              }
+            }
             combined_new_data <- rbind(combined_new_data, new_data)
-
             legend_labs <- c(legend_labs, paste(evar, "=", val))
           }
 
@@ -948,7 +960,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
-
 
 
 
