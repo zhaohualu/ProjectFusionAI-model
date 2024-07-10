@@ -683,7 +683,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   }
   plot_list <- list()
   ncol <- 1
-
+  
   # Load necessary libraries
   library(survival)
   library(ggplot2)
@@ -693,7 +693,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(caret)  # for cross-validation
   library(randomForestSRC)  # for random forest survival
   library(plotly)  # for interactive plots
-
+  
   # Suppress deprecated gather_() warning from survminer
   suppressWarnings({
     # Extract data and model
@@ -701,23 +701,23 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     time_var <- x$time_var
     status_var <- x$status_var
     model <- x$model
-
+    
     if ("km" %in% plots) {
       surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
-
+      
       if (cox_regression) {
         # Create a single Cox regression model using all included variables
         cox_fit <- x$cox_model
-
+        
         for (evar in incl) {
           values <- evar_values[[evar]]
           if (is.null(values)) {
-            values <- unique(dataset[[evar]])
+            next  # Skip if no values provided for this variable
           }
-
+          
           combined_new_data <- data.frame()
           legend_labs <- c()
-
+          
           # Create new data frames for each value
           for (val in values) {
             new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
@@ -732,22 +732,22 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             combined_new_data <- rbind(combined_new_data, new_data)
             legend_labs <- c(legend_labs, paste(evar, "=", val))
           }
-
+          
           # Ensure unique rows in combined_new_data
           combined_new_data <- unique(combined_new_data)
-
+          
           fit <- survfit(cox_fit, newdata = combined_new_data)
-
+          
           # Plot survival curves
           ggsurv <- ggsurvplot(fit,
                                conf.int = FALSE,  # Exclude confidence intervals
                                legend.labs = legend_labs,
                                ggtheme = theme_minimal(),
                                data = combined_new_data)
-
+          
           # Customize plot
           cox_plot <- ggsurv$plot +
-            labs(title = paste("Cox Regression Model"), x = "Time", y = "Survival Probability") +
+            labs(title = paste("Cox Regression Model for", evar), x = "Time", y = "Survival Probability") +
             geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
             theme(
               plot.title = element_text(size = 20, face = "bold"),
@@ -756,10 +756,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
               legend.title = element_text(size = 18, face = "bold"),
               legend.text = element_text(size = 14)
             )
-
+          
           # Convert to interactive plotly plot
           interactive_cox_plot <- ggplotly(cox_plot)
-
+          
           plot_list[[paste("cox_regression", evar, sep = "_")]] <- interactive_cox_plot
         }
       } else if (random_forest) {
@@ -769,12 +769,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         for (evar in incl) {
           values <- evar_values[[evar]]
           if (is.null(values)) {
-            values <- unique(dataset[[evar]])
+            next  # Skip if no values provided for this variable
           }
-
+          
           combined_new_data <- data.frame()
           legend_labs <- c()
-
+          
           # Create new data frames for each value
           for (val in values) {
             new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
@@ -789,21 +789,21 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             combined_new_data <- rbind(combined_new_data, new_data)
             legend_labs <- c(legend_labs, paste(evar, "=", val))
           }
-
+          
           # Ensure unique rows in combined_new_data
           combined_new_data <- unique(combined_new_data)
-
+          
           rf_pred <- predict(rf_fit, newdata = combined_new_data)
-
+          
           # Create survival probabilities data frame
           surv_df <- data.frame(Time = rep(rf_pred$time.interest, each = nrow(combined_new_data)),
                                 SurvivalProbability = as.vector(t(rf_pred$survival)),
                                 Value = rep(legend_labs, each = length(rf_pred$time.interest)))
-
+          
           # Plot survival curves
           rf_plot <- ggplot(surv_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
             geom_line() +
-            labs(title = paste("Random Forest Survival Model"), x = "Time", y = "Survival Probability") +
+            labs(title = paste("Random Forest Survival Model for", evar), x = "Time", y = "Survival Probability") +
             theme_minimal() +
             geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
             theme(
@@ -813,10 +813,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
               legend.title = element_text(size = 18, face = "bold"),
               legend.text = element_text(size = 14)
             )
-
+          
           # Convert to interactive plotly plot
           interactive_rf_plot <- ggplotly(rf_plot)
-
+          
           plot_list[[paste("rf_survival", evar, sep = "_")]] <- interactive_rf_plot
         }
       } else {
@@ -824,33 +824,33 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         for (evar in incl) {
           values <- evar_values[[evar]]
           if (is.null(values)) {
-            values <- unique(dataset[[evar]])
+            next  # Skip if no values provided for this variable
           }
-
+          
           surf_df <- data.frame()
-
+          
           for (val in values) {
             subset_data <- dataset[dataset[[evar]] == val, ]
-
+            
             pred.train <- log(predict(x$best_model, x$best_model$dtrain))
             pred.test <- log(predict(x$best_model, xgboost::xgb.DMatrix(data = as.matrix(subset_data[, setdiff(names(subset_data), c(time_var, status_var))]))))
             time_interest <- sort(unique(x$train_data$new_time[x$train_data$status == 1]))
             basehaz_cum <- basehaz.gbm(x$train_data$time, x$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
             surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
-
+            
             if (length(surf.i) != length(basehaz_cum)) {
               warning("Length of surf.i and basehaz_cum do not match. Adjusting lengths.")
               min_length <- min(length(surf.i), length(basehaz_cum))
               surf.i <- surf.i[1:min_length]
               basehaz_cum <- basehaz_cum[1:min_length]
             }
-
+            
             surf_df <- rbind(surf_df, data.frame(Time = time_interest[1:length(surf.i)], SurvivalProbability = surf.i, Value = as.factor(val)))
           }
-
+          
           surf_plot <- ggplot(surf_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
             geom_line() +
-            labs(title = paste("Survival Probability over Time (XGB Model)"), x = "Time", y = "Survival Probability") +
+            labs(title = paste("Survival Probability over Time (XGB Model) for", evar), x = "Time", y = "Survival Probability") +
             theme_minimal() +
             geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
             scale_color_discrete(name = evar) +
@@ -861,10 +861,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
               axis.title = element_text(size = 18, face = "bold"),
               axis.text = element_text(size = 14)
             )
-
+          
           # Convert to interactive plotly plot
           interactive_surf_plot <- ggplotly(surf_plot)
-
+          
           plot_list[[paste("surf_i", evar, sep = "_")]] <- interactive_surf_plot
         }
       }
@@ -874,10 +874,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       if (cox_regression) {
         # Use the predictors specified by the user in incl
         predictors <- incl
-
+        
         # Extract precomputed C-index values for the complete model
         complete_cindex <- x$avg_cox_c_index
-
+        
         # Leave-one-variable-out models
         leave_one_out_cindex <- sapply(predictors, function(predictor) {
           formula <- as.formula(paste("Surv(", time_var, ", ", status_var, ") ~ ", paste(setdiff(predictors, predictor), collapse = " + ")))
@@ -890,11 +890,11 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             return(c_index)
           }))
         })
-
+        
         # Calculate variable importance
         importance_scores <- complete_cindex - leave_one_out_cindex
         importance_df <- data.frame(Variable = predictors, Importance = importance_scores)
-
+        
         # Create importance plot
         importance_plot <- ggplot(importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
           geom_bar(stat = "identity") +
@@ -906,7 +906,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14),
             plot.title = element_text(size = 20)
           )
-
+        
         plot_list[["importance"]] <- importance_plot
         ncol <- max(ncol, 1)
       } else if (random_forest) {
@@ -914,7 +914,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         rf_fit <- x$best_rf_model
         importance <- vimp.rfsrc(rf_fit, importance = "permute")$importance
         importance_df <- data.frame(Variable = names(importance), Importance = importance)
-
+        
         # Create importance plot
         importance_plot <- ggplot(importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
           geom_bar(stat = "identity") +
@@ -926,12 +926,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14),
             plot.title = element_text(size = 20)
           )
-
+        
         plot_list[["importance"]] <- importance_plot
         ncol <- max(ncol, 1)
       } else {
         importance <- xgb.importance(model = model)
-
+        
         importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
           geom_bar(stat = "identity") +
           coord_flip() +
@@ -942,12 +942,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14),
             plot.title = element_text(size = 20)
           )
-
+        
         plot_list[["importance"]] <- importance_plot
         ncol <- max(ncol, 1)
       }
     }
-
+    
     if (length(plot_list) > 0) {
       if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
         return(plot_list[["importance"]])
@@ -960,6 +960,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
+
 
 
 
