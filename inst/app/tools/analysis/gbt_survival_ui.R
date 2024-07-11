@@ -498,10 +498,17 @@ observeEvent(input$create_plot, {
     gbt_surv <- gbt_survival_inputs()
     km_plots <- input$gbt_survival_plots
     km_incl <- input$incl
+    
     km_evar_values <- lapply(input$incl, function(var) {
-      as.numeric(strsplit(input[[paste0("evar_values_", var)]], ",")[[1]])
+      values <- input[[paste0("evar_values_", var)]]
+      if (!is.null(values) && values != "") {
+        as.numeric(strsplit(values, ",")[[1]])
+      } else {
+        NULL
+      }
     })
-    names(km_evar_values) <- km_incl
+    names(km_evar_values) <- input$incl
+    km_evar_values <- km_evar_values[!sapply(km_evar_values, is.null)]
     
     gbt_surv$plots <- km_plots
     gbt_surv$incl <- km_incl
