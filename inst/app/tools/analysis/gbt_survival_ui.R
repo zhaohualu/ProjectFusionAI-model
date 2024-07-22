@@ -8,7 +8,7 @@ model_options <- c(
 # Gradient Boosted Trees plots
 gbt_survival_plots <- c(
   "None" = "none",
-  "Kaplan Meier Plot" = "km",
+  "Predicted Survival Curve" = "km",
   "Permutation Importance" = "importance",
   "ROC Curve" = "roc"
 )
@@ -175,7 +175,7 @@ output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_gbt_survival == 'Summary'",
+      condition = "input.tabs_gbt_survival == 'Model Summary'",
       wellPanel(
         selectInput("model_selection", "Model selection:",
                     choices = model_options,
@@ -434,12 +434,16 @@ output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
 
-  # three separate tabs
+  # four separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
     tabPanel(
-      "Summary",
+      "Model Summary",
       verbatimTextOutput("summary_gbt_survival")
+    ),
+    tabPanel(
+      "Model Performance",
+      verbatimTextOutput("model_performance_gbt_survival")
     ),
     tabPanel(
       "Predict",
@@ -574,6 +578,7 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
 
 
 
