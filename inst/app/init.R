@@ -72,19 +72,18 @@ options(
           tags$link(rel = "stylesheet", type = "text/css", href = "www_model/style.css"),
           tags$script(src = "www_model/js/store.js")
         ),
-        "Estimate",
         tabPanel("Linear regression (OLS)", uiOutput("regress")),
         tabPanel("Logistic regression (GLM)", uiOutput("logistic")),
         #tabPanel("Multinomial logistic regression (MNL)", uiOutput("mnl")),
         #tabPanel("Naive Bayes", uiOutput("nb")),
         #tabPanel("Neural Network", uiOutput("nn")),
-        "----", "Trees",
         tabPanel("Classification and regression trees", uiOutput("crtree")),
-        tabPanel("Random Forest", uiOutput("rf")),
+        tabPanel("Random Forest (Binary/Continuous)", uiOutput("rf")),
         tabPanel("Gradient Boosted Trees", uiOutput("gbt")),
         # Add the Survival Analysis tab
         tabPanel("Survival Analysis", uiOutput("gbt_survival"))
       )
     )
 )
+
 
