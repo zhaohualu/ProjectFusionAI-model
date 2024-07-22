@@ -9,7 +9,8 @@ model_options <- c(
 gbt_survival_plots <- c(
   "None" = "none",
   "Kaplan Meier Plot" = "km",
-  "Permutation Importance" = "importance"
+  "Permutation Importance" = "importance",
+  "ROC Curve" = "roc"
 )
 
 gbt_survival_args <- as.list(formals(gbt_survival))
@@ -58,7 +59,7 @@ gbt_survival_pred_inputs <- reactive({
   for (i in names(gbt_survival_pred_args)) {
     gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival_", i)]]
   }
-  
+
   gbt_survival_pred_args$pred_cmd <- gbt_survival_pred_args$pred_data <- ""
   if (input$gbt_survival_predict == "cmd") {
     gbt_survival_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_survival_pred_cmd) %>%
@@ -340,7 +341,7 @@ observeEvent(input$gbt_survival_run, {
   if (is.empty(gbti$mtry)) gbti$mtry <- 3
   if (is.empty(gbti$nodesize)) gbti$nodesize <- 15
   if (is.empty(gbti$nsplit)) gbti$nsplit <- 0
-  
+
   withProgress(
     message = "Estimating model", value = 1,
     {
@@ -382,14 +383,14 @@ observeEvent(input$random_forest, {
   if (is.empty(input$gbt_survival_predict, "none")) {
     return("** Select prediction input **")
   }
-  
+
   if ((input$gbt_survival_predict == "data" || input$gbt_survival_predict == "datacmd") && is.empty(input$gbt_survival_pred_data)) {
     return("** Select data for prediction **")
   }
   if (input$gbt_survival_predict == "cmd" && is.empty(input$gbt_survival_pred_cmd)) {
     return("** Enter prediction commands **")
   }
-  
+
   withProgress(message = "Generating predictions", value = 1, {
     gbti <- gbt_survival_pred_inputs()
     gbti$object <- .gbt_survival()
@@ -432,7 +433,7 @@ gbt_survival_plot_height <- function() {
 output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
-  
+
   # three separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
@@ -456,7 +457,7 @@ output$gbt_survival <- renderUI({
       plotlyOutput("plot_gbt_survival", width = "900px", height = "600px")
     )
   )
-  
+
   stat_tab_panel(
     menu = "Model > Trees",
     tool = "Gradient Boosted Trees",
@@ -473,7 +474,7 @@ output$gbt_survival <- renderUI({
   } else if (is.empty(input$gbt_survival_plots, "none")) {
     return("Please select a plot from the drop-down menu")
   }
-  
+
   pinp <- gbt_survival_plot_inputs()
   pinp$shiny <- TRUE
   check_for_pdp_pred_plots("gbt_survival")
@@ -487,7 +488,7 @@ observeEvent(input$create_plot, {
   req(input$gbt_survival_plots)
   req(input$incl)
   req(input$gbt_survival_evar)
-  
+
   output$plot_gbt_survival <- renderPlotly({
     validate(
       need(input$incl, "Please select variables to include in the KM plot."),
@@ -498,7 +499,7 @@ observeEvent(input$create_plot, {
     gbt_surv <- gbt_survival_inputs()
     km_plots <- input$gbt_survival_plots
     km_incl <- input$incl
-    
+
     km_evar_values <- lapply(input$incl, function(var) {
       values <- input[[paste0("evar_values_", var)]]
       if (!is.null(values) && values != "") {
@@ -509,12 +510,12 @@ observeEvent(input$create_plot, {
     })
     names(km_evar_values) <- input$incl
     km_evar_values <- km_evar_values[!sapply(km_evar_values, is.null)]
-    
+
     gbt_surv$plots <- km_plots
     gbt_surv$incl <- km_incl
     gbt_surv$evar_values <- km_evar_values
     gbt_surv$dataset <- dataset
-    
+
     gbt_surv$time_var <- input$gbt_survival_time_var
     gbt_surv$status_var <- input$gbt_survival_status_var
     gbt_surv$evar <- input$gbt_survival_evar
@@ -537,6 +538,10 @@ observeEvent(input$create_plot, {
       plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox",
            random_forest = input$model_selection == "rf")
     } else if (km_plots == "importance") {
+      result <- do.call(gbt_survival, gbt_surv)
+      plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox",
+           random_forest = input$model_selection == "rf")
+    } else if (km_plots == "roc") {
       result <- do.call(gbt_survival, gbt_surv)
       plot(result, plots = km_plots, incl = km_incl, evar_values = km_evar_values, cox_regression = input$model_selection == "cox",
            random_forest = input$model_selection == "rf")
@@ -569,6 +574,7 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
 
 
 
