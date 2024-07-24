@@ -439,7 +439,8 @@ output$gbt_survival <- renderUI({
     id = "tabs_gbt_survival",
     tabPanel(
       "Model Summary",
-      verbatimTextOutput("summary_gbt_survival")
+      verbatimTextOutput("summary_gbt_survival"),
+      plotlyOutput("importance_plot_gbt_survival")
     ),
     tabPanel(
       "Model Performance",
@@ -470,6 +471,10 @@ output$gbt_survival <- renderUI({
   )
 })
 
+output$importance_plot_gbt_survival <- renderPlotly({
+  plot(.gbt_survival(), plots = "importance", incl = .gbt_survival()$evar, cox_regression = input$model_selection == "cox",
+                    random_forest = input$model_selection == "rf" )
+})
 .plot_gbt_survival <- reactive({
   if (is.null(.gbt_survival())) {
     return("** Press the Estimate button to estimate the model **")
