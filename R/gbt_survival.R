@@ -65,7 +65,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                          envir = parent.frame(), cox_regression = FALSE,
                          random_forest = FALSE, ntree = c(100), mtry = c(5),
                          nodesize = c(15), nsplit = c(0), nfold = 10, test_size = 0.2, ...) {
-  
+
   # Check and install necessary packages if not already installed
   if (!requireNamespace("BiocManager", quietly = TRUE)) {
     install.packages("BiocManager")
@@ -82,32 +82,32 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   if (!requireNamespace("xgboost", quietly = TRUE)) {
     install.packages("xgboost")
   }
-  
+
   library(survcomp)
   library(randomForestSRC)
   library(survival)  # Ensure the survival package is loaded for Cox model functions
   library(SurvMetrics)
   library(xgboost)
-  
+
   if (time_var %in% evar || status_var %in% evar) {
     return("Time or status variable contained in the set of explanatory variables.\nPlease update model specification." %>%
              add_class("gbt_survival"))
   }
-  
+
   vars <- c(time_var, status_var, evar)
-  
+
   if (is.empty(wts, "None")) {
     wts <- NULL
   } else if (is_string(wts)) {
     wtsname <- wts
     vars <- c(time_var, status_var, evar, wtsname)
   }
-  
+
   df_name <- if (is_string(dataset)) dataset else deparse(substitute(dataset))
   dataset <- get_data(dataset, vars, filt = data_filter, arr = arr, rows = rows, envir = envir) %>%
     mutate_if(is.Date, as.numeric)
   nr_obs <- nrow(dataset)
-  
+
   if (!is.empty(wts, "None")) {
     if (exists("wtsname")) {
       wts <- dataset[[wtsname]]
@@ -120,54 +120,54 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
       )
     }
   }
-  
+
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     return(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>%
              add_class("gbt_survival"))
   }
-  
+
   set.seed(seed)
-  
+
   # Split dataset into training and testing sets
   train_index <- sample(seq_len(nrow(dataset)), size = (1 - test_size) * nrow(dataset))
   train_data <- dataset[train_index, ]
   test_data <- dataset[-train_index, ]
-  
+
   # Create new column indicating time label with sign for both training and testing sets
   train_data <- train_data %>%
     mutate(new_time = ifelse(train_data[[status_var]] == 0, -train_data[[time_var]], train_data[[time_var]]))
-  
+
   test_data <- test_data %>%
     mutate(new_time = ifelse(test_data[[status_var]] == 0, -test_data[[time_var]], test_data[[time_var]]))
-  
+
   # Prepare the data for xgboost
   dtrain <- xgb.DMatrix(data = model.matrix(~ . - 1, data = train_data[, evar, drop = FALSE]), label = train_data$new_time)
   dtest <- xgb.DMatrix(data = model.matrix(~ . - 1, data = test_data[, evar, drop = FALSE]), label = test_data$new_time)
-  
+
   folds <- sample(rep(seq_len(nfold), length.out = nrow(train_data)))
-  
+
   best_model <- NULL
   best_metric_value <- Inf
   best_tuning_parameters <- list()
   eval_log <- data.frame(iter = integer(), value = numeric())
-  
+
   xgb_brier_scores <- numeric()  # To store Brier scores for each fold
   xgb_c_indices <- numeric()     # To store C-indices for each fold
-  
+
   for (d in max_depth) {
     for (lr in learning_rate) {
       for (msl in min_split_loss) {
         for (mcw in min_child_weight) {
           for (ss in subsample) {
             for (nr in nrounds) {
-              
+
               cv_results <- data.frame(fold = integer(), metric_value = numeric())
-              
+
               for (fold in 1:nfold) {
                 fold_train_data <- train_data[folds != fold, ]
                 fold_eval_data <- train_data[folds == fold, ]
-                
+
                 gbt_input <- list(
                   max_depth = d,
                   learning_rate = lr,
@@ -181,23 +181,23 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                   eval_metric = "cox-nloglik",
                   verbose = 0
                 )
-                
+
                 ## adding data
                 dtx <- model.matrix(~ . - 1, data = fold_train_data[, evar, drop = FALSE])
                 y_lower <- fold_train_data$new_time
-                
+
                 dtrain_fold <- xgb.DMatrix(data = dtx, label = y_lower)
-                
+
                 ## Check that dty has the same length as the number of rows in dtx
                 if (length(y_lower) != nrow(dtx)) {
                   stop("The length of labels must equal to the number of rows in the input data")
                 }
-                
+
                 watchlist <- list(train = dtrain_fold)
-                
+
                 gbt_input$data <- dtrain_fold
                 gbt_input$watchlist <- watchlist
-                
+
                 seed <- gsub("[^0-9]", "", seed)
                 if (!is.empty(seed)) {
                   if (exists(".Random.seed")) {
@@ -206,9 +206,9 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                   }
                   set.seed(seed)
                 }
-                
+
                 model <- do.call(xgboost::xgb.train, gbt_input)
-                
+
                 metric_value <- model$best_score
                 if (!is.null(metric_value) && length(metric_value) > 0) {
                   cv_results <- rbind(cv_results, data.frame(fold = fold, metric_value = metric_value))
@@ -216,7 +216,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
               }
               SurvObj <- Surv(fold_eval_data[[time_var]], fold_eval_data[[status_var]])
               xgb_pred <- predict(model, xgb.DMatrix(data = model.matrix(~ . - 1, data = fold_eval_data[, evar, drop = FALSE])))
-              
+
               c_index <- concordance.index(xgb_pred, fold_eval_data[[time_var]], fold_eval_data[[status_var]])$c.index
               xgb_c_indices <- c(xgb_c_indices, c_index)
               # Convert XGBoost predictions to survival probabilities
@@ -225,11 +225,11 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
               min_time <- min(SurvObj[, 1])
               time_points <- seq(min_time, max_time, length.out = 100)
               SurvProb.xgb <- matrix(NA, nrow = length(xgb_pred), ncol = length(time_points))
-              
+
               for (i in 1:length(xgb_pred)) {
                 SurvProb.xgb[i, ] <- exp(-xgb_pred[i] * time_points)
               }
-              
+
               # Extract survival probabilities at evaluation times matching SurvObj
               eval_times <- sapply(SurvObj[, 1], function(x) which.min(abs(time_points - x)))
               SurvProb.xgb_aligned <- sapply(1:nrow(SurvProb.xgb), function(i) {
@@ -239,11 +239,11 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                   NA
                 }
               })
-              
+
               if (all(is.na(SurvProb.xgb_aligned))) {
                 next
               }
-              
+
               xgb_brier_scores[fold] <- Brier(SurvObj, SurvProb.xgb_aligned)
               # Add XGBoost Brier score results to the output
               best_model$xgb_brier_scores <- xgb_brier_scores
@@ -268,8 +268,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 best_model$best_tuning_parameters <- best_tuning_parameters
                 best_model$best_metric_value <- best_metric_value
                 best_model$evaluation_log <- eval_log
-                
-                
+
+
               }
             }
           }
@@ -277,90 +277,90 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
       }
     }
   }
-  
+
   if (cox_regression) {
     # Perform Cox regression modeling using cross-validation
     cox_c_indices <- numeric()
     BS_coxpb <- numeric(nfold)
-    
+
     for (fold in 1:nfold) {
       fold_train_data <- train_data[folds != fold, ]
       fold_eval_data <- train_data[folds == fold, ]
-      
+
       formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
       cox_model <- coxph(formula, data = fold_train_data, x = TRUE)
-      
+
       # Calculate the concordance index (C-index) for the Cox model
       cox_pred <- predict(cox_model, newdata = fold_eval_data, type = "risk")
       c_index <- concordance.index(cox_pred, fold_eval_data[[time_var]], fold_eval_data[[status_var]])$c.index
       cox_c_indices <- c(cox_c_indices, c_index)
-      
+
       # Calculate the Brier score for the Cox model using SurvMetrics package
       SurvObj <- Surv(fold_eval_data[[time_var]], fold_eval_data[[status_var]])
       SurvProb.coxph.pb <- predict(cox_model, newdata = fold_eval_data, type = "survival", se.fit = FALSE)
-      
+
       if (any(is.na(SurvProb.coxph.pb))) {
         next
       }
-      
+
       BS_coxpb[fold] <- Brier(SurvObj, SurvProb.coxph.pb)
     }
-    
+
     avg_cox_c_index <- mean(cox_c_indices, na.rm = TRUE)
     IBS_coxpb <- mean(BS_coxpb, na.rm = TRUE)  # Integrated Brier Score
-    
+
     # Add Cox regression results to the output
     best_model$cox_c_indices <- cox_c_indices
     best_model$avg_cox_c_index <- avg_cox_c_index
     best_model$brier_scores <- BS_coxpb
     best_model$IBS_coxpb <- IBS_coxpb  # Add Integrated Brier Score to the output
   }
-  
+
   if (random_forest) {
     # Perform Random Forest survival modeling using hyperparameter tuning and cross-validation
     best_rf_model <- NULL
     best_rf_c_index <- -Inf
     best_rf_params <- list()
     rf_brier_scores <- numeric(nfold)
-    
+
     for (nt in ntree) {
       for (mt in mtry) {
         for (ns in nodesize) {
           for (nspl in nsplit) {
             rf_c_indices <- numeric()
-            
+
             for (fold in 1:nfold) {
               fold_train_data <- train_data[folds != fold, ]
               fold_eval_data <- train_data[folds == fold, ]
-              
+
               rf_formula <- as.formula(paste("Surv(", time_var, ",", status_var, ") ~ ", paste(evar, collapse = " + ")))
               rf_model <- rfsrc(rf_formula, data = fold_train_data[, c(evar, time_var, status_var), drop = FALSE],
                                 ntree = nt, mtry = mt, nodesize = ns, nsplit = nspl, importance = TRUE, proximity = TRUE)
-              
+
               # Calculate the concordance index (C-index) for the Random Forest model
               rf_pred <- predict(rf_model, newdata = fold_eval_data)$predicted
               c_index <- concordance.index(rf_pred, fold_eval_data[[time_var]], fold_eval_data[[status_var]])$c.index
               rf_c_indices <- c(rf_c_indices, c_index)
-              
+
               # Calculate the Brier score for the Random Forest model
               SurvObj <- Surv(fold_eval_data[[time_var]], fold_eval_data[[status_var]])
               rf_pred_obj <- predict(rf_model, newdata = fold_eval_data, type = "surv")
               SurvProb.rf <- rf_pred_obj$survival
-              
+
               # Ensure SurvProb.rf matches the length of SurvObj and handle different time points
               time_points <- rf_pred_obj$time.interest
               eval_times <- sapply(SurvObj[, 1], function(x) which.min(abs(time_points - x)))
               SurvProb.rf_aligned <- sapply(1:nrow(SurvProb.rf), function(i) SurvProb.rf[i, eval_times[i]])
-              
+
               if (any(is.na(SurvProb.rf_aligned))) {
                 next
               }
-              
+
               rf_brier_scores[fold] <- Brier(SurvObj, SurvProb.rf_aligned)
             }
-            
+
             avg_rf_c_index <- mean(rf_c_indices, na.rm = TRUE)
-            
+
             if (avg_rf_c_index > best_rf_c_index) {
               best_rf_c_index <- avg_rf_c_index
               best_rf_model <- rf_model
@@ -375,9 +375,9 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
         }
       }
     }
-    
+
     avg_rf_brier_score <- mean(rf_brier_scores, na.rm = TRUE)  # Average Brier score across folds
-    
+
     # Add Random Forest results to the output
     best_model$rf_c_indices <- rf_c_indices
     best_model$avg_rf_c_index <- best_rf_c_index
@@ -386,7 +386,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
     best_model$rf_brier_scores <- rf_brier_scores
     best_model$avg_rf_brier_score <- avg_rf_brier_score  # Add average Brier score to the output
   }
-  
+
   # Add XGBoost results to the output
   avg_xgb_c_index <- mean(xgb_c_indices, na.rm = TRUE)  # Average C-index across folds
   best_model$xgb_brier_scores <- xgb_brier_scores
@@ -394,7 +394,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   best_model$xgb_c_indices <- xgb_c_indices
   best_model$avg_xgb_c_index <- avg_xgb_c_index
   # Add average XGBoost Brier score to the output
-  
+
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
 #' Summary method for the gbt_survival function
@@ -420,6 +420,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (is.character(object)) {
     return(object)
   }
+
   cat("Survival Analysis\n")
   cat("Type                 : Survival Analysis")
   cat("\nData                 :", object$df_name)
@@ -438,17 +439,17 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
-  
+
   if (!is.empty(object$seed)) {
     cat("Seed                 :", object$seed, "\n")
   }
-  
+
   if (!is.empty(object$wts, "None") && (length(unique(object$wts)) > 2 || min(object$wts) >= 1)) {
     cat("Nr obs               :", format_nr(sum(object$wts), dec = 0), "\n")
   } else {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
-  
+
   if (!is.null(object$cox_model)) {
     cat("\nCox Regression Model:\n")
     print(object$cox_model$call)
@@ -470,7 +471,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
-  
+
   if (!is.null(object$best_rf_model)) {
     cat("\nRandom Forest Model:\n")
     if (isTRUE(prn)) {
@@ -489,7 +490,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
-  
+
   if (!is.null(object$best_model$xgb_brier_scores) && is.null(object$cox_model) && is.null(object$best_rf_model)) {
     cat("\nXGBoost Model:\n")
     best_tuning_params <- list(
@@ -512,7 +513,11 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
+
+  # Plot Importance Plot
+  plot(object, plots = "importance", incl = object$evar, cox_regression = !is.null(object$cox_model), random_forest = !is.null(object$best_rf_model), ...)
 }
+
 
 
 
@@ -1151,6 +1156,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
+
 
                                             
 
