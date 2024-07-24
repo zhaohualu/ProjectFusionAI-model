@@ -513,6 +513,9 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
+
+  # Plot Importance Plot
+  #plot(object, plots = "importance", incl = object$evar, cox_regression = !is.null(object$cox_model), random_forest = !is.null(object$best_rf_model), ...)
 }
 
 
@@ -1153,7 +1156,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
-
 
                                             
 
