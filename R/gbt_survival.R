@@ -82,9 +82,6 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   if (!requireNamespace("xgboost", quietly = TRUE)) {
     install.packages("xgboost")
   }
-    if (!requireNamespace("xgboost.surv", quietly = TRUE)) {
-    remotes::install_github("bcjaeger/xgboost.surv")
-  }
   
   library(survcomp)
   library(randomForestSRC)
@@ -188,9 +185,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 ## adding data
                 dtx <- model.matrix(~ . - 1, data = fold_train_data[, evar, drop = FALSE])
                 y_lower <- fold_train_data$new_time
-                
+
                 dtrain_fold <- xgb.DMatrix(data = dtx, label = y_lower)
-                
                 ## Check that dty has the same length as the number of rows in dtx
                 if (length(y_lower) != nrow(dtx)) {
                   stop("The length of labels must equal to the number of rows in the input data")
@@ -211,11 +207,9 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 }
                 
                 model <- do.call(xgboost::xgb.train, gbt_input)
-                
-                metric_value <- model$best_score
-                if (!is.null(metric_value) && length(metric_value) > 0) {
-                  cv_results <- rbind(cv_results, data.frame(fold = fold, metric_value = metric_value))
-                }
+                metric_value <- min(model$evaluation_log$train_cox_nloglik)
+                cv_results <- rbind(cv_results, data.frame(fold = fold, metric_value = metric_value))
+
               }
               # Define variables for Brier score calculation
               pred.train <- log(predict(model, dtrain))
@@ -224,6 +218,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
               basehaz_cum <- basehaz.gbm(train_data$time, train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
               surf.i <- matrix(NA, nrow = length(pred.test), ncol = length(time_interest))
               test_data$new_time <- with(test_data, ifelse(status == 0, time, time))
+              c_index <- cIndex(exp(pred.test), test_data$new_time, test_data[[status_var]])["index"]
+              xgb_c_indices <- c(xgb_c_indices, c_index)
               
               for (i in 1:length(pred.test)) {
                 surf.i[i, ] <- exp(-exp(pred.test[i]) * basehaz_cum)
@@ -249,7 +245,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
               xgb_brier_scores[fold] <- brier_scores
               # Add XGBoost Brier score results to the output
               best_model$xgb_brier_scores <- xgb_brier_scores
-              best_model$avg_xgb_brier_score <- xgb_brier_scores[length(xgb_brier_scores)]
+              best_model$avg_xgb_c_index <- mean(xgb_c_indices, na.rm = TRUE)
               avg_metric_value <- mean(cv_results$metric_value)
               if (avg_metric_value < best_metric_value) {
                 best_metric_value <- avg_metric_value
@@ -386,13 +382,14 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   # Add XGBoost results to the output
   avg_xgb_c_index <- mean(xgb_c_indices, na.rm = TRUE)  # Average C-index across folds
   best_model$xgb_brier_scores <- xgb_brier_scores
-  best_model$avg_xgb_brier_score <- xgb_brier_scores[length(xgb_brier_scores)]  # Add average XGBoost Brier score to the output
+  best_model$avg_xgb_brier_score <- mean(xgb_brier_scores, na.rm = TRUE) # Add average XGBoost Brier score to the output
   best_model$xgb_c_indices <- xgb_c_indices
   best_model$avg_xgb_c_index <- avg_xgb_c_index
   # Add average XGBoost Brier score to the output
   
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
+  
   
 #' Summary method for the gbt_survival function
 #'
