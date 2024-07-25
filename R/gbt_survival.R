@@ -1137,6 +1137,23 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         plot_list[["roc_xgb"]] <- roc_plot
       }
     }
+    
+    
+    if ("brier" %in% plots) {
+      if (random_forest) {
+        # Calculate Brier scores for Random Forest
+        rf_fit <- x$best_rf_model
+        bs.km <- get.brier.survival(rf_fit, cens.mode = "km")$brier.score
+        bs.rsf <- get.brier.survival(rf_fit, cens.mode = "rfsrc")$brier.score
+        
+        brier_plot <- plot(bs.km, type = "s", col = 2)
+        lines(bs.rsf, type ="s", col = 4)
+        legend("bottomright", legend = c("cens.model = km", "cens.model = rfsrc"), fill = c(2,4))
+        
+
+        plot_list[["brier_score"]] <- brier_plot
+      }
+    }
 
     if (length(plot_list) > 0) {
       if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
