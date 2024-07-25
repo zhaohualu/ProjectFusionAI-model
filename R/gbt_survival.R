@@ -54,6 +54,7 @@
 #' @importFrom survival survfit survdiff Surv coxph
 #' @importFrom broom tidy
 #' @importFrom survcomp concordance.index
+#' @importFrom intsurv cIndex
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
