@@ -210,41 +210,37 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 model <- do.call(xgboost::xgb.train, gbt_input)
                 metric_value <- min(model$evaluation_log$train_cox_nloglik)
                 cv_results <- rbind(cv_results, data.frame(fold = fold, metric_value = metric_value))
+                dtest_fold <- xgb.DMatrix(data = model.matrix(~ . - 1, data = fold_eval_data[, evar, drop = FALSE]))
+                pred_test <- log(predict(model, dtest_fold))
+                
+                time_interest <- sort(unique(fold_eval_data$new_time[fold_eval_data[[status_var]] == 1]))
+                basehaz_cum <- basehaz.gbm(fold_eval_data[[time_var]], fold_eval_data[[status_var]], pred_test, t.eval = time_interest, cumulative = TRUE)
+                surf_i <- matrix(NA, nrow = length(pred_test), ncol = length(time_interest))
+                fold_eval_data$new_time <- with(fold_eval_data, ifelse(status == 0, time, time))
+                
+                for (i in 1:length(pred_test)) {
+                  surf_i[i, ] <- exp(-exp(pred_test[i]) * basehaz_cum)
+                }
+                
+                if (ncol(surf_i) != length(time_interest)) {
+                  stop("Number of columns in 'surf_i' must match the length of 'time_interest'.")
+                }
+                brier_scores <- eval_bscore(
+                  surf_i,
+                  label = NULL,
+                  time = fold_eval_data$new_time,
+                  status = fold_eval_data$status,
+                  cens_data = NULL,
+                  cens_model = "cox",
+                  eval_times = time_interest,
+                  scale = FALSE
+                )
+                xgb_brier_scores[[fold]] <- brier_scores  # Store Brier scores for this fold
+                c_index <- cIndex(exp(pred_test), fold_eval_data$new_time, fold_eval_data[[status_var]])["index"]
+                xgb_c_indices <- c(xgb_c_indices, c_index)
+                
+              }
 
-              }
-              # Define variables for Brier score calculation
-              pred.train <- log(predict(model, dtrain))
-              pred.test  <- log(predict(model, dtest))
-              time_interest <- sort(unique(train_data$new_time[train_data$status == 1]))
-              basehaz_cum <- basehaz.gbm(train_data$time, train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
-              surf.i <- matrix(NA, nrow = length(pred.test), ncol = length(time_interest))
-              test_data$new_time <- with(test_data, ifelse(status == 0, time, time))
-              c_index <- cIndex(exp(pred.test), test_data$new_time, test_data[[status_var]])["index"]
-              xgb_c_indices <- c(xgb_c_indices, c_index)
-              
-              for (i in 1:length(pred.test)) {
-                surf.i[i, ] <- exp(-exp(pred.test[i]) * basehaz_cum)
-              }
-              
-              if (ncol(surf.i) != length(time_interest)) {
-                stop("Number of columns in 'surf.i' must match the length of 'time_interest'.")
-              }
-              
-              # Calculate Brier scores using eval_bscore
-              brier_scores <- eval_bscore(
-                surf.i,
-                label = NULL,
-                time = test_data$new_time,
-                status = test_data$status,
-                cens_data = NULL,
-                cens_model = "cox",
-                eval_times = time_interest,
-                scale = FALSE
-              )
-              
-              
-              xgb_brier_scores[fold] <- brier_scores
-              # Add XGBoost Brier score results to the output
               best_model$xgb_brier_scores <- xgb_brier_scores
               best_model$avg_xgb_c_index <- mean(xgb_c_indices, na.rm = TRUE)
               avg_metric_value <- mean(cv_results$metric_value)
