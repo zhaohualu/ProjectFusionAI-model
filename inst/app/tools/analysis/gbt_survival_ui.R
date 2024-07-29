@@ -10,7 +10,8 @@ gbt_survival_plots <- c(
   "None" = "none",
   "Predicted Survival Curve" = "km",
   "Permutation Importance" = "importance",
-  "ROC Curve" = "roc"
+  "ROC Curve" = "roc",
+  "Brier Curve" = "brier"
 )
 
 gbt_survival_args <- as.list(formals(gbt_survival))
@@ -25,6 +26,7 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$random_forest <- (input$model_selection == "rf")
   gbt_survival_args$time_var <- input$gbt_survival_time_var
   gbt_survival_args$status_var <- input$gbt_survival_status_var
+
   for (i in r_drop(names(gbt_survival_args))) {
     if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds", "ntree", "mtry", "nodesize", "nsplit")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
@@ -279,6 +281,12 @@ output$ui_gbt_survival <- renderUI({
       )
     ),
     conditionalPanel(
+      condition = "input.tabs_gbt_survival == 'Model Performance'",
+      wellPanel(
+        textInput("roc_times", "ROC Times (comma-separated):", "300"),  # Text input for ROC times
+      )
+    ),
+    conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Plot'",
       wellPanel(
         uiOutput("ui_gbt_survival_plots"),
@@ -297,6 +305,7 @@ output$ui_gbt_survival <- renderUI({
     )
   )
 })
+
 
 gbt_survival_available <- reactive({
   req(input$dataset)
@@ -449,7 +458,9 @@ output$gbt_survival <- renderUI({
     ),
     tabPanel(
       "Model Performance",
-      verbatimTextOutput("model_performance_gbt_survival")
+      verbatimTextOutput("model_performance_gbt_survival"),
+      plotlyOutput("brier_score_plot"),
+      plotlyOutput("roc_curve_plot")     # ROC Curve Plot
     ),
     tabPanel(
       "Predict",
@@ -475,6 +486,8 @@ output$gbt_survival <- renderUI({
     output_panels = gbt_survival_output_panels
   )
 })
+
+
 output$importance_plot_gbt_survival <- renderPlotly({
   req(model_estimated())  # Ensure the model has been estimated before plotting
 
@@ -494,13 +507,47 @@ output$importance_plot_gbt_survival <- renderPlotly({
     })
   })
 })
+output$brier_score_plot <- renderPlotly({
+  req(model_estimated())  # Ensure the model has been estimated before plotting
+
+  isolate({
+    model <- .gbt_survival()
+    req(!is.null(model), !is.null(model$evar))  # Check model and required variables
+
+    tryCatch({
+      plot(model, plots = "brier", incl = model$evar, cox_regression = input$model_selection == "cox", random_forest = input$model_selection == "rf")
+    }, error = function(e) {
+      NULL  # Handle errors silently
+    }, warning = function(w) {
+      NULL  # Handle warnings silently
+    })
+  })
+})
+
+output$roc_curve_plot <- renderPlotly({
+  req(model_estimated())  # Ensure the model has been estimated before plotting
+
+  isolate({
+    model <- .gbt_survival()
+    req(!is.null(model), !is.null(model$evar))  # Check model and required variables
+
+    tryCatch({
+      plot(model, plots = "roc", incl = model$evar, cox_regression = input$model_selection == "cox", random_forest = input$model_selection == "rf", roc_times = input$roc_times)
+    }, error = function(e) {
+      NULL  # Handle errors silently
+    }, warning = function(w) {
+      NULL  # Handle warnings silently
+    })
+  })
+})
+
 
 .plot_gbt_survival <- reactive({
   if (is.null(.gbt_survival())) {
     return("** Press the Estimate button to estimate the model **")
   } else if (gbt_survival_available() != "available") {
     return(gbt_survival_available())
-  } else if (is.empty(input$gbt_survival_plots, "none")) {
+  } else if (is.empty(input$gbt_survivxal_plots, "none")) {
     return("Please select a plot from the drop-down menu")
   }
 
