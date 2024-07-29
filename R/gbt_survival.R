@@ -775,13 +775,13 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
 #' )
 #' plot(result, plots = c("km"), incl = c("age", "sex"), evar_values = list(age = c(60, 70), sex = c(1)))
 #' @export
-plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), cox_regression = FALSE, random_forest = FALSE, ...) {
+plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), cox_regression = FALSE, random_forest = FALSE,roc_times = NULL, ...) {
   if (is.character(x) || !inherits(x$model, "xgb.Booster")) {
     return(x)
   }
   plot_list <- list()
   ncol <- 1
-
+  
   # Load necessary libraries
   library(survival)
   library(ggplot2)
@@ -791,7 +791,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
   library(caret)  # for cross-validation
   library(randomForestSRC)  # for random forest survival
   library(plotly)  # for interactive plots
-
+  
   # Suppress deprecated gather_() warning from survminer
   suppressWarnings({
     # Extract data and model
@@ -799,23 +799,24 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     time_var <- x$time_var
     status_var <- x$status_var
     model <- x$model
-
+    
+    
     if ("km" %in% plots) {
       surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
-
+      
       if (cox_regression) {
         # Create a single Cox regression model using all included variables
         cox_fit <- x$cox_model
-
+        
         for (evar in incl) {
           values <- evar_values[[evar]]
           if (is.null(values)) {
             next  # Skip if no values provided for this variable
           }
-
+          
           combined_new_data <- data.frame()
           legend_labs <- c()
-
+          
           # Create new data frames for each value
           for (val in values) {
             new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
@@ -830,19 +831,19 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             combined_new_data <- rbind(combined_new_data, new_data)
             legend_labs <- c(legend_labs, paste(evar, "=", val))
           }
-
+          
           # Ensure unique rows in combined_new_data
           combined_new_data <- unique(combined_new_data)
-
+          
           fit <- survfit(cox_fit, newdata = combined_new_data)
-
+          
           # Plot survival curves
           ggsurv <- ggsurvplot(fit,
                                conf.int = FALSE,  # Exclude confidence intervals
                                legend.labs = legend_labs,
                                ggtheme = theme_minimal(),
                                data = combined_new_data)
-
+          
           # Customize plot
           cox_plot <- ggsurv$plot +
             labs(title = paste("Cox Regression Model for", evar), x = "Time", y = "Survival Probability") +
@@ -854,10 +855,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
               legend.title = element_text(size = 18, face = "bold"),
               legend.text = element_text(size = 14)
             )
-
+          
           # Convert to interactive plotly plot
           interactive_cox_plot <- ggplotly(cox_plot)
-
+          
           plot_list[[paste("cox_regression", evar, sep = "_")]] <- interactive_cox_plot
         }
       } else if (random_forest) {
@@ -869,10 +870,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           if (is.null(values)) {
             next  # Skip if no values provided for this variable
           }
-
+          
           combined_new_data <- data.frame()
           legend_labs <- c()
-
+          
           # Create new data frames for each value
           for (val in values) {
             new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
@@ -887,17 +888,17 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             combined_new_data <- rbind(combined_new_data, new_data)
             legend_labs <- c(legend_labs, paste(evar, "=", val))
           }
-
+          
           # Ensure unique rows in combined_new_data
           combined_new_data <- unique(combined_new_data)
-
+          
           rf_pred <- predict(rf_fit, newdata = combined_new_data)
-
+          
           # Create survival probabilities data frame
           surv_df <- data.frame(Time = rep(rf_pred$time.interest, each = nrow(combined_new_data)),
                                 SurvivalProbability = as.vector(t(rf_pred$survival)),
                                 Value = rep(legend_labs, each = length(rf_pred$time.interest)))
-
+          
           # Plot survival curves
           rf_plot <- ggplot(surv_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
             geom_line() +
@@ -911,10 +912,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
               legend.title = element_text(size = 18, face = "bold"),
               legend.text = element_text(size = 14)
             )
-
+          
           # Convert to interactive plotly plot
           interactive_rf_plot <- ggplotly(rf_plot)
-
+          
           plot_list[[paste("rf_survival", evar, sep = "_")]] <- interactive_rf_plot
         }
       } else {
@@ -924,28 +925,28 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           if (is.null(values)) {
             next  # Skip if no values provided for this variable
           }
-
+          
           surf_df <- data.frame()
-
+          
           for (val in values) {
             subset_data <- dataset[dataset[[evar]] == val, ]
-
+            
             pred.train <- log(predict(x$best_model, x$best_model$dtrain))
             pred.test <- log(predict(x$best_model, xgboost::xgb.DMatrix(data = as.matrix(subset_data[, setdiff(names(subset_data), c(time_var, status_var))]))))
             time_interest <- sort(unique(x$train_data$new_time[x$train_data$status == 1]))
             basehaz_cum <- basehaz.gbm(x$train_data$time, x$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
             surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
-
+            
             if (length(surf.i) != length(basehaz_cum)) {
               warning("Length of surf.i and basehaz_cum do not match. Adjusting lengths.")
               min_length <- min(length(surf.i), length(basehaz_cum))
               surf.i <- surf.i[1:min_length]
               basehaz_cum <- basehaz_cum[1:min_length]
             }
-
+            
             surf_df <- rbind(surf_df, data.frame(Time = time_interest[1:length(surf.i)], SurvivalProbability = surf.i, Value = as.factor(val)))
           }
-
+          
           surf_plot <- ggplot(surf_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
             geom_line() +
             labs(title = paste("Survival Probability over Time (XGB Model) for", evar), x = "Time", y = "Survival Probability") +
@@ -959,10 +960,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
               axis.title = element_text(size = 18, face = "bold"),
               axis.text = element_text(size = 14)
             )
-
+          
           # Convert to interactive plotly plot
           interactive_surf_plot <- ggplotly(surf_plot)
-
+          
           plot_list[[paste("surf_i", evar, sep = "_")]] <- interactive_surf_plot
         }
       }
@@ -972,10 +973,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       if (cox_regression) {
         # Use the predictors specified by the user in incl
         predictors <- incl
-
+        
         # Extract precomputed C-index values for the complete model
         complete_cindex <- x$avg_cox_c_index
-
+        
         # Leave-one-variable-out models
         leave_one_out_cindex <- sapply(predictors, function(predictor) {
           formula <- as.formula(paste("Surv(", time_var, ", ", status_var, ") ~ ", paste(setdiff(predictors, predictor), collapse = " + ")))
@@ -988,11 +989,11 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             return(c_index)
           }))
         })
-
+        
         # Calculate variable importance
         importance_scores <- complete_cindex - leave_one_out_cindex
         importance_df <- data.frame(Variable = predictors, Importance = importance_scores)
-
+        
         # Create importance plot
         importance_plot <- ggplot(importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
           geom_bar(stat = "identity") +
@@ -1004,7 +1005,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14),
             plot.title = element_text(size = 20)
           )
-
+        
         plot_list[["importance"]] <- importance_plot
         ncol <- max(ncol, 1)
       } else if (random_forest) {
@@ -1012,7 +1013,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         rf_fit <- x$best_rf_model
         importance <- vimp.rfsrc(rf_fit, importance = "permute")$importance
         importance_df <- data.frame(Variable = names(importance), Importance = importance)
-
+        
         # Create importance plot
         importance_plot <- ggplot(importance_df, aes(x = reorder(Variable, Importance), y = Importance)) +
           geom_bar(stat = "identity") +
@@ -1024,12 +1025,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14),
             plot.title = element_text(size = 20)
           )
-
+        
         plot_list[["importance"]] <- importance_plot
         ncol <- max(ncol, 1)
       } else {
         importance <- xgb.importance(model = model)
-
+        
         importance_plot <- ggplot(importance, aes(x = reorder(Feature, Gain), y = Gain)) +
           geom_bar(stat = "identity") +
           coord_flip() +
@@ -1040,34 +1041,41 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14),
             plot.title = element_text(size = 20)
           )
-
+        
         plot_list[["importance"]] <- importance_plot
         ncol <- max(ncol, 1)
       }
     }
-
     if ("roc" %in% plots) {
       if (cox_regression) {
         # Create a Cox regression model using all included variables
         cox_fit <- x$cox_model
-
-        # Predict risk scores
-        cox_pred <- predict(cox_fit, newdata = dataset, type = "risk")
-
-        # Generate ROC curve using ROCR package
-        pred <- prediction(cox_pred, dataset[[status_var]] == 1)
-        perf <- performance(pred, "tpr", "fpr")
-
-        # Convert to data frame for ggplot
-        roc_df <- data.frame(
-          FPR = unlist(perf@x.values),
-          TPR = unlist(perf@y.values)
-        )
-
+        test_data <- x$test_data
+        predicted <- predict(cox_fit, newdata = test_data, type = "risk")
+        
+        # Use user-provided time points or default to a range of times
+        if (is.null(roc_times)) {
+          roc_times <- seq(min(test_data[[time_var]]), max(test_data[[time_var]]), length.out = 100)
+        }
+        
+        roc_df <- data.frame(FPR = numeric(), TPR = numeric(), Time = numeric())
+        
+        for (time_point in roc_times) {
+          # Generate survivalROC object
+          roc_obj <- survivalROC(Stime = test_data[[time_var]], 
+                                 status = test_data[[status_var]], 
+                                 marker = predicted, 
+                                 predict.time = time_point, 
+                                 method = "KM")
+          # Add data to the dataframe
+          roc_df <- rbind(roc_df, data.frame(FPR = roc_obj$FP, TPR = roc_obj$TP, Time = time_point))
+        }
+        smoothed_roc <- smooth.spline(roc_df$FPR, roc_df$TPR)
+        
         # Plot ROC curve using ggplot
-        roc_plot <- ggplot(roc_df, aes(x = FPR, y = TPR)) +
-          geom_line() +
-          labs(title = "ROC Curve for Cox Regression Model",
+        roc_plot <- ggplot(data.frame(FPR = smoothed_roc$x, TPR = smoothed_roc$y), aes(x = FPR, y = TPR)) +
+          geom_line(color = "blue", size = 1) +  # Smoothed ROC curve
+          labs(title = "Time-dependent ROC Curve for Cox Regression Model",
                x = "False Positive Rate",
                y = "True Positive Rate") +
           theme_minimal() +
@@ -1076,24 +1084,41 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.title = element_text(size = 18, face = "bold"),
             axis.text = element_text(size = 14)
           )
-
+        
         plot_list[["roc_cox"]] <- roc_plot
       } else if (random_forest) {
         # Predict survival for Random Forest model
         rf_fit <- x$best_rf_model
-        rf_pred <- predict(rf_fit, newdata = dataset)$predicted
-
-        # Calculate ROC curve
-        roc_rf <- roc(dataset[[status_var]], rf_pred)
-
-        # Plot ROC curve using ggplot
-        roc_df <- data.frame(
-          TPR = roc_rf$sensitivities,
-          FPR = 1 - roc_rf$specificities
-        )
-        roc_plot <- ggplot(roc_df, aes(x = FPR, y = TPR)) +
-          geom_line() +
-          labs(title = "ROC Curve for Random Forest Model",
+        
+        # Use user-provided time points or default to a range of times
+        if (is.null(roc_times)) {
+          roc_times <- seq(min(test_data[[time_var]]), max(test_data[[time_var]]), length.out = 100)
+        }
+        
+        roc_df <- data.frame(FPR = numeric(), TPR = numeric(), Time = numeric())
+        
+        for (time_point in roc_times) {
+          # Predict survival probabilities at the specified time point
+          rf_pred <- log(predictSurvProb(rf_fit, newdata = test_data, times = time_point))
+          
+          # Generate survivalROC object
+          roc_obj <- survivalROC(Stime = test_data[[time_var]], 
+                                 status = test_data[[status_var]], 
+                                 marker = rf_pred, 
+                                 predict.time = time_point, 
+                                 method = "KM")
+          
+          # Add data to the dataframe
+          roc_df <- rbind(roc_df, data.frame(FPR = roc_obj$FP, TPR = roc_obj$TP, Time = time_point))
+        }
+        
+        # Smooth the ROC curve using smooth.spline
+        smoothed_roc <- smooth.spline(roc_df$FPR, roc_df$TPR, spar = 0.4)
+        
+        # Plot only the smoothed ROC curve using ggplot
+        roc_plot <- ggplot(data.frame(FPR = smoothed_roc$x, TPR = smoothed_roc$y), aes(x = FPR, y = TPR)) +
+          geom_line(color = "blue", size = 1) +  # Smoothed ROC curve
+          labs(title = "Time-dependent ROC Curve for Random Forest Model",
                x = "False Positive Rate",
                y = "True Positive Rate") +
           theme_minimal() +
@@ -1102,23 +1127,45 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.title = element_text(size = 18, face = "bold"),
             axis.text = element_text(size = 14)
           )
-
+        
         plot_list[["roc_rf"]] <- roc_plot
       } else {
+        evar_features <- x$model$feature_names
+        required_features <- c("time", "status", evar_features)
         # Predict survival for XGBoost model
-        xgb_pred <- predict(model, newdata = as.matrix(dataset[, setdiff(names(dataset), c(time_var, status_var))]))
-
-        # Calculate ROC curve
-        roc_xgb <- roc(dataset[[status_var]], xgb_pred)
-
-        # Plot ROC curve using ggplot
-        roc_df <- data.frame(
-          TPR = roc_xgb$sensitivities,
-          FPR = 1 - roc_xgb$specificities
-        )
-        roc_plot <- ggplot(roc_df, aes(x = FPR, y = TPR)) +
-          geom_line() +
-          labs(title = "ROC Curve for XGBoost Model",
+        test_data <- x$test_data[, required_features, drop = FALSE]
+        
+        xgb_pred <- predict(model, newdata = as.matrix(test_data[, setdiff(names(test_data), c(time_var, status_var))]))
+        
+        # Use user-provided time points or default to a range of times
+        if (is.null(roc_times)) {
+          roc_times <- seq(min(test_data[[time_var]]), max(test_data[[time_var]]), length.out = 100)
+        }
+        
+        roc_df <- data.frame(FPR = numeric(), TPR = numeric(), Time = numeric())
+        
+        for (time_point in roc_times) {
+          # Generate risk scores (or probabilities) at the specified time point
+          xgb_pred <- predict(model, newdata = as.matrix(test_data[, setdiff(names(test_data), c(time_var, status_var))]))
+          
+          # Generate survivalROC object for the specified time point
+          roc_obj <- survivalROC(Stime = test_data[[time_var]], 
+                                 status = test_data[[status_var]], 
+                                 marker = xgb_pred, 
+                                 predict.time = time_point, 
+                                 method = "KM")
+          
+          # Add data to the dataframe
+          roc_df <- rbind(roc_df, data.frame(FPR = roc_obj$FP, TPR = roc_obj$TP, Time = time_point))
+        }
+        
+        # Smooth the ROC curve using smooth.spline
+        smoothed_roc <- smooth.spline(roc_df$FPR, roc_df$TPR, spar = 0.4)
+        
+        # Plot only the smoothed ROC curve using ggplot
+        roc_plot <- ggplot(data.frame(FPR = smoothed_roc$x, TPR = smoothed_roc$y), aes(x = FPR, y = TPR)) +
+          geom_line(color = "blue", size = 1) +  # Smoothed ROC curve
+          labs(title = "Time-dependent ROC Curve for XGBoost Model",
                x = "False Positive Rate",
                y = "True Positive Rate") +
           theme_minimal() +
@@ -1127,14 +1174,24 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.title = element_text(size = 18, face = "bold"),
             axis.text = element_text(size = 14)
           )
-
+        
         plot_list[["roc_xgb"]] <- roc_plot
       }
     }
     
     
+    
     if ("brier" %in% plots) {
-      if (random_forest) {
+      if (cox_regression) {
+        # Calculate Brier scores for Cox model
+        cox_fit <- x$cox_model
+        formula <- as.formula(paste("Surv(", time_var, ", ", status_var, ") ~ ", paste(incl, collapse = " + ")))
+        
+        bs <- pec::pec(object = cox_fit, formula = formula, data = x$test_data)
+        brier_plot <- plot(bs, type = "s", col = 2)
+        legend("bottomright", legend = "coxph Brier Score")
+        plot_list[["brier_score_cox"]] <- NULL
+      } else if (random_forest) {
         # Calculate Brier scores for Random Forest
         rf_fit <- x$best_rf_model
         bs.km <- get.brier.survival(rf_fit, cens.mode = "km")$brier.score
@@ -1144,11 +1201,44 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         lines(bs.rsf, type ="s", col = 4)
         legend("bottomright", legend = c("cens.model = km", "cens.model = rfsrc"), fill = c(2,4))
         
-
         plot_list[["brier_score"]] <- brier_plot
       }
-    }
+      else {
+        test <- xgb.DMatrix(data = model.matrix(~ . - 1, data = x$test_data[, evar, drop = FALSE]), label = x$test_data$new_time)
+        # Get the predicted survival probabilities for the dataset
+        pred <- log(predict(model, test))
+        time_interest <- sort(unique(x$test_data$new_time[x$test_data[[status_var]] == 1]))
+        basehaz_cum <- basehaz.gbm(x$test_data[[time_var]], x$test_data[[status_var]], pred, t.eval = time_interest, cumulative = TRUE)
+        surf_i <- matrix(NA, nrow = length(pred), ncol = length(time_interest))
 
+        for (i in 1:length(pred)) {
+          surf_i[i, ] <- exp(-exp(pred[i]) * basehaz_cum)
+        }
+        # Calculate Brier score
+
+        brier_scores <- brier_score(
+          y_true = Surv(x$test_data[[time_var]], x$test_data[[status_var]]),
+          surv = surf_i,
+          times = time_interest
+        )        
+        # Plot Brier scores over time
+        brier_plot <- ggplot(data.frame(time = time_interest, brier_score = brier_scores), aes(x = time, y = brier_score)) +
+          geom_line(color = "blue") +
+          labs(title = "Brier Score over Time (XGBoost Model)", x = "Time", y = "Brier Score") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(size = 20, face = "bold"),
+            axis.title = element_text(size = 18, face = "bold"),
+            axis.text = element_text(size = 14)
+          )
+        
+        plot_list[["brier_xgb"]] <- (brier_plot)
+        
+
+        
+      }
+    }
+    
     if (length(plot_list) > 0) {
       if (length(plot_list) == 1 && "importance" %in% names(plot_list)) {
         return(plot_list[["importance"]])
