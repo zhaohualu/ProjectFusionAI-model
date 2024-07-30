@@ -283,7 +283,9 @@ output$ui_gbt_survival <- renderUI({
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Model Performance'",
       wellPanel(
-        textInput("roc_times", "ROC Times (comma-separated):", "300"),  # Text input for ROC times
+        numericInput("roc_times", "ROC Time:", value = 300, min = 0, step = 1),
+        actionButton("update_roc", "Update", icon = icon("refresh"), class = "btn-primary")  # Update button
+        # Numeric input for a single ROC time
       )
     ),
     conditionalPanel(
@@ -459,8 +461,8 @@ output$gbt_survival <- renderUI({
     tabPanel(
       "Model Performance",
       verbatimTextOutput("model_performance_gbt_survival"),
-      plotlyOutput("brier_score_plot"),
-      plotlyOutput("roc_curve_plot")     # ROC Curve Plot
+      plotOutput("brier_score_plot"),
+      plotOutput("roc_curve_plot")     # ROC Curve Plot
     ),
     tabPanel(
       "Predict",
@@ -507,7 +509,7 @@ output$importance_plot_gbt_survival <- renderPlotly({
     })
   })
 })
-output$brier_score_plot <- renderPlotly({
+output$brier_score_plot <- renderPlot({
   req(model_estimated())  # Ensure the model has been estimated before plotting
 
   isolate({
@@ -524,20 +526,29 @@ output$brier_score_plot <- renderPlotly({
   })
 })
 
-output$roc_curve_plot <- renderPlotly({
+# Observe event to create the ROC curve plot when the "Update" button is pressed
+observeEvent(input$update_roc, {
   req(model_estimated())  # Ensure the model has been estimated before plotting
 
-  isolate({
-    model <- .gbt_survival()
-    req(!is.null(model), !is.null(model$evar))  # Check model and required variables
+  output$roc_curve_plot <- renderPlot({
+    validate(
+      need(!is.null(input$roc_times), "Please provide a ROC time."),
+      need(!is.null(input$gbt_survival_evar), "Please select explanatory variables.")
+    )
 
-    tryCatch({
-      plot(model, plots = "roc", incl = model$evar, cox_regression = input$model_selection == "cox", random_forest = input$model_selection == "rf", roc_times = input$roc_times)
-    }, error = function(e) {
-      NULL  # Handle errors silently
-    }, warning = function(w) {
-      NULL  # Handle warnings silently
-    })
+    # Extract data and inputs
+    model <- .gbt_survival()
+
+    # Extract user-defined ROC time
+    roc_time <- as.numeric(input$roc_times)
+    req(!is.na(roc_time))  # Ensure ROC time is valid
+
+    # Generate the ROC curve plot
+
+    plot(model, plots = "roc", incl = model$evar,
+         cox_regression = input$model_selection == "cox",
+         random_forest = input$model_selection == "rf",
+         roc_times = roc_time)
   })
 })
 
@@ -650,7 +661,6 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
-
 
 
 
