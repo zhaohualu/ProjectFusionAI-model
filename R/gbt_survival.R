@@ -1085,7 +1085,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14)
           )
         
-        plot_list[["roc_cox"]] <- roc_plot
+        #plot_list[["roc_cox"]] <- roc_plot
+        return(roc_plot)
       } else if (random_forest) {
         # Predict survival for Random Forest model
         rf_fit <- x$best_rf_model
@@ -1128,7 +1129,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14)
           )
         
-        plot_list[["roc_rf"]] <- roc_plot
+        #plot_list[["roc_rf"]] <- roc_plot
+        return(roc_plot)
       } else {
         evar_features <- x$model$feature_names
         required_features <- c("time", "status", evar_features)
@@ -1175,7 +1177,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14)
           )
         
-        plot_list[["roc_xgb"]] <- roc_plot
+       # plot_list[["roc_xgb"]] <- roc_plot
+        return(roc_plot)
       }
     }
     
@@ -1188,20 +1191,25 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         formula <- as.formula(paste("Surv(", time_var, ", ", status_var, ") ~ ", paste(incl, collapse = " + ")))
         
         bs <- pec::pec(object = cox_fit, formula = formula, data = x$test_data)
-        brier_plot <- plot(bs, type = "s", col = 2)
+        plot(bs, type = "s", col = c("blue", "red"), legend = FALSE)  # Blue for Reference, Green for CoxPH
+        title(main = "Brier Score Plot for Cox Regression Model", font.main = 2, cex.main = 1.5)
         legend("bottomright", legend = "coxph Brier Score")
-        plot_list[["brier_score_cox"]] <- NULL
+        #return(brier_plot)
+        #plot_list[["brier_score_cox"]] <- NULL
       } else if (random_forest) {
         # Calculate Brier scores for Random Forest
         rf_fit <- x$best_rf_model
         bs.km <- get.brier.survival(rf_fit, cens.mode = "km")$brier.score
         bs.rsf <- get.brier.survival(rf_fit, cens.mode = "rfsrc")$brier.score
+        par(font.lab = 2, cex.lab = 1.2)
         
         brier_plot <- plot(bs.km, type = "s", col = 2)
         lines(bs.rsf, type ="s", col = 4)
         legend("bottomright", legend = c("cens.model = km", "cens.model = rfsrc"), fill = c(2,4))
+        title(main = "Brier Score Plot for Random Forest Model", font.main = 2, cex.main = 1.5)
         
-        plot_list[["brier_score"]] <- brier_plot
+        #plot_list[["brier_score"]] <- brier_plot
+        return(brier_plot)
       }
       else {
         test <- xgb.DMatrix(data = model.matrix(~ . - 1, data = x$test_data[, evar, drop = FALSE]), label = x$test_data$new_time)
@@ -1232,7 +1240,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14)
           )
         
-        plot_list[["brier_xgb"]] <- (brier_plot)
+        #plot_list[["brier_xgb"]] <- (brier_plot)
+        return(brier_plot)
         
 
         
@@ -1251,6 +1260,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
+
 
                                             
 
