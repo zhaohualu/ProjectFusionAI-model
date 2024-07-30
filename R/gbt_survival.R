@@ -186,7 +186,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 ## adding data
                 dtx <- model.matrix(~ . - 1, data = fold_train_data[, evar, drop = FALSE])
                 y_lower <- fold_train_data$new_time
-
+                
                 dtrain_fold <- xgb.DMatrix(data = dtx, label = y_lower)
                 ## Check that dty has the same length as the number of rows in dtx
                 if (length(y_lower) != nrow(dtx)) {
@@ -240,7 +240,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
                 xgb_c_indices <- c(xgb_c_indices, c_index)
                 
               }
-
+              
               best_model$xgb_brier_scores <- xgb_brier_scores
               best_model$avg_xgb_c_index <- mean(xgb_c_indices, na.rm = TRUE)
               avg_metric_value <- mean(cv_results$metric_value)
@@ -386,8 +386,8 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
   
   as.list(environment()) %>% add_class(c("gbt_survival", "model"))
 }
-  
-  
+
+
 #' Summary method for the gbt_survival function
 #'
 #' @details See \url{https://radiant-rstats.github.io/docs/model/gbt.html} for an example in Radiant
@@ -411,7 +411,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (is.character(object)) {
     return(object)
   }
-
+  
   cat("Survival Analysis\n")
   cat("Type                 : Survival Analysis")
   cat("\nData                 :", object$df_name)
@@ -430,17 +430,17 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
-
+  
   if (!is.empty(object$seed)) {
     cat("Seed                 :", object$seed, "\n")
   }
-
+  
   if (!is.empty(object$wts, "None") && (length(unique(object$wts)) > 2 || min(object$wts) >= 1)) {
     cat("Nr obs               :", format_nr(sum(object$wts), dec = 0), "\n")
   } else {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
-
+  
   if (!is.null(object$cox_model)) {
     cat("\nCox Regression Model:\n")
     print(object$cox_model$call)
@@ -462,7 +462,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
-
+  
   if (!is.null(object$best_rf_model)) {
     cat("\nRandom Forest Model:\n")
     if (isTRUE(prn)) {
@@ -481,7 +481,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
-
+  
   if (!is.null(object$best_model$xgb_brier_scores) && is.null(object$cox_model) && is.null(object$best_rf_model)) {
     cat("\nXGBoost Model:\n")
     best_tuning_params <- list(
@@ -504,7 +504,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
     cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
-
+  
   # Plot Importance Plot
   #plot(object, plots = "importance", incl = object$evar, cox_regression = !is.null(object$cox_model), random_forest = !is.null(object$best_rf_model), ...)
 }
@@ -534,7 +534,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   if (is.character(object)) {
     return(object)
   }
-
+  
   # Ensure you have a name for the prediction dataset
   if (is.data.frame(pred_data)) {
     df_name <- deparse(substitute(pred_data))
@@ -544,13 +544,13 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     df_name <- pred_data
   }
   explanatory_vars <- names(object$best_model$test_data)[!(names(object$best_model$test_data) %in% c("RowID", "new_time", "time", "status"))]
-
+  
   if (cox_regression) {
     if (!is.null(object$cox_model)) {
       # Predict using the Cox regression model
       survival_prob <- predict(object$cox_model, newdata = object$test_data, type = "expected")
       survival_prob <- exp(-survival_prob)
-
+      
       # Convert predictions to data frame
       survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
     } else {
@@ -560,7 +560,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     if (!is.null(object$best_rf_model)) {
       # Predict using the Random Forest model
       rf_pred <- predict(object$best_rf_model, newdata = object$test_data)
-
+      
       # Calculate survival probabilities at the corresponding event or censored time for each observation
       survival_prob <- sapply(seq_len(nrow(object$test_data)), function(i) {
         time_point <- object$test_data$time[i]
@@ -572,7 +572,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
           return(rf_pred$survival[i, which(rf_pred$time.interest == closest_time)])
         }
       })
-
+      
       # Convert predictions to data frame
       survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
     } else {
@@ -586,7 +586,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     basehaz_cum <- basehaz.gbm(object$train_data$time, object$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
     surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
     # Extract explanatory variables from xgb.DMatrix
-
+    
     # Combine predictions with explanatory variables from the test set
     survival_prob_df <- data.frame(SurvivalProbability = surf.i )
   }
@@ -600,13 +600,13 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     paste("Rows shown           :", min(10, nrow(survival_prob_df)), "of", nrow(survival_prob_df)),
     sep = "\n"
   )
-
+  
   # Limit the number of rows shown to 10 for the output
   survival_prob_df_shown <- head(survival_prob_df, 20)
-
+  
   # Print the header and the data frame
   cat(header, "\n\n")
-
+  
   survival_prob_df %>%
     set_attr("radiant_pred_data", df_name)
 }
@@ -660,17 +660,17 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
     status_var <- object$status_var
     dataset <- object$model$model
     evar <- object$evar
-
+    
     if (!is.character(evar)) {
       stop("evar should be a character vector")
     }
-
+    
     if (is.data.frame(dataset)) {
       dtx <- model.matrix(~ . - 1, data = dataset[, evar, drop = FALSE])
     } else {
       stop("dataset should be a data frame")
     }
-
+    
     dty <- dataset[[time_var]]
     dstatus <- dataset[[status_var]]
     train <- xgboost::xgb.DMatrix(data = dtx, label = dty)
@@ -684,11 +684,11 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
     }
     params_base <- object$params
   }
-
+  
   if (!inherits(train, "xgb.DMatrix")) {
     stop("Could not access data. Please use the 'train' argument to pass along a matrix created using xgboost::xgb.DMatrix")
   }
-
+  
   params_base[c("nrounds", "nthread", "silent")] <- NULL
   for (n in names(params)) {
     params_base[[n]] <- params[[n]]
@@ -697,11 +697,11 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
   if (is.null(maximize)) {
     maximize <- params$maximize
   }
-
+  
   if (missing(fun)) {
     fun <- "cox-nloglik"
   }
-
+  
   if (length(shiny::getDefaultReactiveDomain()) > 0) {
     trace <- FALSE
     incProgress <- shiny::incProgress
@@ -710,7 +710,7 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
     incProgress <- function(...) {}
     withProgress <- function(...) list(...)[["expr"]]
   }
-
+  
   tf <- tempfile()
   tune_grid <- expand.grid(params)
   nitt <- nrow(tune_grid)
@@ -755,7 +755,7 @@ cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
       incProgress(1 / nitt, detail = paste("\nCompleted run", i, "out of", nitt))
     }
   })
-
+  
   out <- bind_rows(out)
   out[order(out[[5]], decreasing = FALSE), ]
 }
@@ -1093,18 +1093,18 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         
         # Use user-provided time points or default to a range of times
         if (is.null(roc_times)) {
-          roc_times <- seq(min(test_data[[time_var]]), max(test_data[[time_var]]), length.out = 100)
+          roc_times <- seq(min(x$test_data[[time_var]]), max(x$test_data[[time_var]]), length.out = 100)
         }
         
         roc_df <- data.frame(FPR = numeric(), TPR = numeric(), Time = numeric())
         
         for (time_point in roc_times) {
           # Predict survival probabilities at the specified time point
-          rf_pred <- log(predictSurvProb(rf_fit, newdata = test_data, times = time_point))
+          rf_pred <- log(predictSurvProb(rf_fit, newdata = x$test_data, times = time_point))
           
           # Generate survivalROC object
-          roc_obj <- survivalROC(Stime = test_data[[time_var]], 
-                                 status = test_data[[status_var]], 
+          roc_obj <- survivalROC(Stime = x$test_data[[time_var]], 
+                                 status = x$test_data[[status_var]], 
                                  marker = rf_pred, 
                                  predict.time = time_point, 
                                  method = "KM")
@@ -1177,7 +1177,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
             axis.text = element_text(size = 14)
           )
         
-       # plot_list[["roc_xgb"]] <- roc_plot
+        # plot_list[["roc_xgb"]] <- roc_plot
         return(roc_plot)
       }
     }
@@ -1212,18 +1212,18 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         return(brier_plot)
       }
       else {
-        test <- xgb.DMatrix(data = model.matrix(~ . - 1, data = x$test_data[, evar, drop = FALSE]), label = x$test_data$new_time)
+        test <- xgb.DMatrix(data = model.matrix(~ . - 1, data = x$test_data[, incl, drop = FALSE]), label = x$test_data$new_time)
         # Get the predicted survival probabilities for the dataset
         pred <- log(predict(model, test))
         time_interest <- sort(unique(x$test_data$new_time[x$test_data[[status_var]] == 1]))
         basehaz_cum <- basehaz.gbm(x$test_data[[time_var]], x$test_data[[status_var]], pred, t.eval = time_interest, cumulative = TRUE)
         surf_i <- matrix(NA, nrow = length(pred), ncol = length(time_interest))
-
+        
         for (i in 1:length(pred)) {
           surf_i[i, ] <- exp(-exp(pred[i]) * basehaz_cum)
         }
         # Calculate Brier score
-
+        
         brier_scores <- brier_score(
           y_true = Surv(x$test_data[[time_var]], x$test_data[[status_var]]),
           surv = surf_i,
@@ -1243,8 +1243,18 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         #plot_list[["brier_xgb"]] <- (brier_plot)
         return(brier_plot)
         
-
         
+        
+      }
+    }
+    if ("residual" %in% plots) {
+      if (cox_regression) {
+        # Calculate Brier scores for Cox model
+        cox_fit <- x$cph_exp
+        residual <- plot(model_diagnostics(explainer = explain))
+        return(residual)
+        #return(brier_plot)
+        #plot_list[["brier_score_cox"]] <- NULL
       }
     }
     
