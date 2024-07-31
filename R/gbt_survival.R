@@ -1256,6 +1256,12 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         #return(brier_plot)
         #plot_list[["brier_score_cox"]] <- NULL
       }
+      else if (random_forest) {
+        rf_fit <- x$best_rf_model
+        explainer_rf <- explain(rf_fit)
+        residual <- plot(model_diagnostics(explainer = explainer_rf))
+        return(residual)
+      }
     }
     
     if (length(plot_list) > 0) {
@@ -1270,7 +1276,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
-
 
                                             
 
