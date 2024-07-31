@@ -1262,6 +1262,38 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         residual <- plot(model_diagnostics(explainer = explainer_rf))
         return(residual)
       }
+      else {
+        test_data_matrix <- xgb.DMatrix(data = model.matrix(~ . - 1, data = x$dataset[, -which(names(x$dataset) %in% c("time", "status"))]))
+        predicted_log_risk <- predict(x$model, newdata = test_data_matrix)
+        surv_object <- Surv(x$dataset[["time"]], x$dataset[["status"]])
+        deviance_residuals <- residuals(coxph(surv_object ~ predicted_log_risk))
+        
+        residuals_df <- data.frame(
+          Index = seq_along(deviance_residuals),
+          DevianceResiduals = deviance_residuals,
+          Status = factor(ifelse(x$dataset[["status"]] == 1, "event", "censored"), levels = c("censored", "event"))
+        )
+        
+        residual <- ggplot(residuals_df, aes(x = Index, y = DevianceResiduals, color = Status)) +
+          geom_point(position = position_jitter(width = 0, height = 0.4)) +
+          scale_color_manual(values = c("event" = "red", "censored" = "blue")) +
+          labs(title = "Model diagnostics",
+               subtitle = "created for the XGBoost model",
+               x = "index",
+               y = "deviance residuals",
+               color = "status") +
+          theme_minimal() +
+          theme(
+            plot.title = element_text(size = 14, face = "bold"),
+            plot.subtitle = element_text(size = 12, face = "italic"),
+            axis.title = element_text(size = 12),
+            axis.text = element_text(size = 10),
+            legend.title = element_text(size = 12),
+            legend.text = element_text(size = 10)
+          ) +
+          coord_cartesian(ylim = c(-max(abs(residuals_df$DevianceResiduals)), max(abs(residuals_df$DevianceResiduals))))
+        return(residual)
+      }
     }
     
     if (length(plot_list) > 0) {
@@ -1276,6 +1308,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
+
 
                                             
 
