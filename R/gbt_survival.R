@@ -519,6 +519,7 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #' @param dec Number of decimals to show
 #' @param envir Environment to extract data from
 #' @param cox_regression Boolean flag to indicate if Cox regression predictions are needed
+#' @param new_observation New observation to predict 
 #' @param ... further arguments passed to or from other methods
 #'
 #' @examples
@@ -530,7 +531,8 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #'
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
-                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, random_forest = FALSE, ...) {
+                                 dec = 3, envir = parent.frame(), cox_regression = FALSE, random_forest = FALSE,
+                                 new_observation = NULL, ...) {
   if (is.character(object)) {
     return(object)
   }
@@ -547,12 +549,28 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   
   if (cox_regression) {
     if (!is.null(object$cox_model)) {
-      # Predict using the Cox regression model
-      survival_prob <- predict(object$cox_model, newdata = object$test_data, type = "expected")
-      survival_prob <- exp(-survival_prob)
+      # Create a new observation data frame if provided
+      if (!is.null(new_observation)) {
+        new_observation_df <- as.data.frame(t(new_observation))
+      } else {
+        stop("Please provide new_observation for prediction using Cox model.")
+      }
       
-      # Convert predictions to data frame
-      survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
+      # Use predict_profile from the explainer to get predictions for the new observation
+      profile <- predict_profile(object$cph_exp, new_observation = new_observation_df, variables = object$evar)
+      # Filter out the profile to find the specific prediction for the new observation
+      profile_df <- profile$result
+ 
+      specific_prediction <- profile_df %>%
+        dplyr::filter(if_all(all_of(names(new_observation_df)), ~ . == new_observation_df[[deparse(substitute(.))]]))
+      
+      
+      # If needed, return the survival probabilities or risk scores from the specific prediction
+      # Here, we'll assume the user wants to see the survival probabilities
+      survival_prob_df <- specific_prediction %>%
+        dplyr::select(-`_label_`)
+      
+      
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
     }
@@ -592,11 +610,11 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   }
   # Create the formatted output
   header <- paste(
-    "Survival Analysis",
+    "Survival Prediction",
     paste("Data                 :", df_name),
     "Response variable    : ",
     paste("Explanatory variables:", paste(explanatory_vars, collapse = ", ")),
-    paste("Prediction dataset   :", df_name),
+    paste("Prediction   :", paste(names(new_observation), new_observation, sep = " = ", collapse = ", ")),
     paste("Rows shown           :", min(10, nrow(survival_prob_df)), "of", nrow(survival_prob_df)),
     sep = "\n"
   )
