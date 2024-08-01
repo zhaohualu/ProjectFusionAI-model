@@ -80,6 +80,7 @@ gbt_survival_pred_inputs <- reactive({
   gbt_survival_pred_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
   gbt_survival_pred_args$random_forest <- if (input$model_selection == "rf") TRUE else FALSE
   gbt_survival_pred_args$status_var <- input$gbt_survival_status_var
+
   gbt_survival_pred_args
 })
 
@@ -173,7 +174,17 @@ observeEvent(input$dataset, {
 output$ui_create_plot_button <- renderUI({
   actionButton("create_plot", "Create plot", icon = icon("play"), class = "btn-primary")
 })
-
+output$ui_new_observation <- renderUI({
+  req(input$gbt_survival_evar)
+  input_vars <- input$gbt_survival_evar
+  lapply(input_vars, function(var) {
+    numericInput(
+      inputId = paste0("new_obs_", var),
+      label = paste("Value for", var, ":"),
+      value = NULL
+    )
+  })
+})
 output$ui_gbt_survival <- renderUI({
   req(input$dataset)
   tagList(
@@ -240,6 +251,7 @@ output$ui_gbt_survival <- renderUI({
     conditionalPanel(
       condition = "input.tabs_gbt_survival == 'Predict'",
       wellPanel(
+        uiOutput("ui_new_observation"),  # Add this line
         selectInput(
           "gbt_survival_predict",
           label = "Prediction input type:", reg_predict,
@@ -397,20 +409,35 @@ observeEvent(input$random_forest, {
   if (gbt_survival_available() != "available") {
     return(gbt_survival_available())
   }
-  if (is.empty(input$gbt_survival_predict, "none")) {
-    return("** Select prediction input **")
+#  if (is.empty(input$gbt_survival_predict, "none")) {
+    #return("** Select prediction input **")
+  #}
+  
+  #if ((input$gbt_survival_predict == "data" || input$gbt_survival_predict == "datacmd") && is.empty(input$gbt_survival_pred_data)) {
+    #return("** Select data for prediction **")
+ # }
+  #if (input$gbt_survival_predict == "cmd" && is.empty(input$gbt_survival_pred_cmd)) {
+   # return("** Enter prediction commands **")
+ # }
+  new_obs <- sapply(input$gbt_survival_evar, function(var) {
+    input[[paste0("new_obs_", var)]]
+  }, simplify = TRUE, USE.NAMES = TRUE)
+  
+  # Ensure new_obs is named and numeric
+  new_obs <- as.numeric(new_obs)
+  names(new_obs) <- input$gbt_survival_evar
+  
+  # Check if all new_obs values are non-NULL and numeric
+  if (any(sapply(new_obs, is.null))) {
+    return("** Please enter values for all variables **")
   }
   
-  if ((input$gbt_survival_predict == "data" || input$gbt_survival_predict == "datacmd") && is.empty(input$gbt_survival_pred_data)) {
-    return("** Select data for prediction **")
-  }
-  if (input$gbt_survival_predict == "cmd" && is.empty(input$gbt_survival_pred_cmd)) {
-    return("** Enter prediction commands **")
-  }
-  
+  # Format new_obs as named vector with proper format
+
   withProgress(message = "Generating predictions", value = 1, {
     gbti <- gbt_survival_pred_inputs()
     gbti$object <- .gbt_survival()
+    gbti$new_observation <- new_obs
     gbti$envir <- r_data
     do.call(predict, gbti)
   })
