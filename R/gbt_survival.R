@@ -576,23 +576,29 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     }
   } else if (random_forest) {
     if (!is.null(object$best_rf_model)) {
-      # Predict using the Random Forest model
-      rf_pred <- predict(object$best_rf_model, newdata = object$test_data)
+      rf_fit <- object$best_rf_model
+      rf_fit$explainer_rf <- suppressMessages(explain(rf_fit))
+      # Create a new observation data frame if provided
+      if (!is.null(new_observation)) {
+        new_observation_df <- as.data.frame(t(new_observation))
+      } else {
+        stop("Please provide new_observation for prediction using RF model.")
+      }
       
-      # Calculate survival probabilities at the corresponding event or censored time for each observation
-      survival_prob <- sapply(seq_len(nrow(object$test_data)), function(i) {
-        time_point <- object$test_data$time[i]
-        if (time_point %in% rf_pred$time.interest) {
-          return(rf_pred$survival[i, which(rf_pred$time.interest == time_point)])
-        } else {
-          # If the time point is not in the time.interest, use the closest time point
-          closest_time <- rf_pred$time.interest[which.min(abs(rf_pred$time.interest - time_point))]
-          return(rf_pred$survival[i, which(rf_pred$time.interest == closest_time)])
-        }
-      })
+      # Use predict_profile from the explainer to get predictions for the new observation
+      profile <- predict_profile(rf_fit$explainer_rf, new_observation = new_observation_df, variables = object$evar)
+      # Filter out the profile to find the specific prediction for the new observation
+      profile_df <- profile$result
       
-      # Convert predictions to data frame
-      survival_prob_df <- data.frame(SurvivalProbability = survival_prob)
+      specific_prediction <- profile_df %>%
+        dplyr::filter(if_all(all_of(names(new_observation_df)), ~ . == new_observation_df[[deparse(substitute(.))]]))
+      
+      
+      # If needed, return the survival probabilities or risk scores from the specific prediction
+      # Here, we'll assume the user wants to see the survival probabilities
+      survival_prob_df <- specific_prediction %>%
+        dplyr::select(-`_label_`)
+      
     } else {
       stop("Random Forest model not found in the object. Please ensure random_forest was set to TRUE when calling gbt_survival.")
     }
