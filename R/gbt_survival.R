@@ -568,9 +568,10 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       # If needed, return the survival probabilities or risk scores from the specific prediction
       # Here, we'll assume the user wants to see the survival probabilities
       survival_prob_df <- specific_prediction %>%
-        dplyr::select(-`_label_`)
-      
-      
+        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_` )%>%
+        head(20)
+      plot <- plot(predict_profile(object$cph_exp, new_observation = new_observation_df))
+      print(plot)
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
     }
@@ -597,7 +598,8 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       # If needed, return the survival probabilities or risk scores from the specific prediction
       # Here, we'll assume the user wants to see the survival probabilities
       survival_prob_df <- specific_prediction %>%
-        dplyr::select(-`_label_`)
+        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_`)%>%
+    head(20)
       
     } else {
       stop("Random Forest model not found in the object. Please ensure random_forest was set to TRUE when calling gbt_survival.")
@@ -626,8 +628,8 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   )
   
   # Limit the number of rows shown to 10 for the output
-  survival_prob_df_shown <- head(survival_prob_df, 20)
-  
+  survival_prob_df_shown <- head(survival_prob_df)
+
   # Print the header and the data frame
   cat(header, "\n\n")
   
@@ -1332,7 +1334,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
-
 
                                             
 
