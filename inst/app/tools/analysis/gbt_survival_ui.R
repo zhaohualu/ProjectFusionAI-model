@@ -8,11 +8,11 @@ model_options <- c(
 # Gradient Boosted Trees plots
 gbt_survival_plots <- c(
   "None" = "none",
-  "Predicted Survival Curve" = "km",
-  "Permutation Importance" = "importance",
-  "ROC Curve" = "roc",
-  "Brier Curve" = "brier",
-  "Residual Plot" = "residual"
+  "Predicted Survival Curve" = "km"
+  #"Permutation Importance" = "importance",
+  #"ROC Curve" = "roc",
+  #"Brier Curve" = "brier",
+  #"Residual Plot" = "residual"
 )
 
 gbt_survival_args <- as.list(formals(gbt_survival))
@@ -154,14 +154,14 @@ output$ui_incl <- renderUI({
   vars <- varnames()
   evar <- input$gbt_survival_evar  # Get evar from the input
   selected_vars <- if (!is.null(evar) && length(evar) > 0) evar else vars[1]
-  selectInput("incl", "Variables to include in KM plot:", choices = vars, selected = selected_vars, multiple = TRUE)
+  selectInput("incl", "Variables:", choices = vars, selected = selected_vars, multiple = TRUE)
 })
 
 output$ui_evar_values <- renderUI({
   req(input$dataset)
   vars <- input$incl
   lapply(vars, function(var) {
-    textInput(paste0("evar_values_", var), paste("Values for", var, ":"), value = "")
+    textInput(paste0("evar_values_", var), paste("Values to predict for", var, ":"), value = "")
   })
 })
 
@@ -302,7 +302,7 @@ output$ui_gbt_survival <- renderUI({
       )
     ),
     conditionalPanel(
-      condition = "input.tabs_gbt_survival == 'Plot'",
+      condition = "input.tabs_gbt_survival == 'Predicted Survival Curve'",
       wellPanel(
         uiOutput("ui_gbt_survival_plots"),
         uiOutput("ui_create_plot_button"),
@@ -555,7 +555,7 @@ output$gbt_survival <- renderUI({
       plotOutput("predict_gbt_survival_plot", width = "1200px", height = "500px")
     ),
     tabPanel(
-      "Plot",
+      "Predicted Survival Curve",
       download_link("dlp_gbt_survival"),
       plotlyOutput("plot_gbt_survival", width = "1200px", height = "600px")
     )
@@ -758,8 +758,6 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
-
-
 
 
 
