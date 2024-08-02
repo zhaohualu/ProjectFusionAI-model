@@ -859,7 +859,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         cox_plot <- ggadjustedcurves(
           fit = x$cox_model,
           data = new_observation,
-          ylab = "Survival Rate") + labs(title = "Predicted Survival Rate Curve") + 
+          ylab = "Survival Rate") + labs(title = "Predicted Survival Rate Curve (Cox Model)") + 
           geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) 
 
         # Convert to interactive plotly plot
@@ -892,7 +892,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         # Plot survival curve
         rf_plot <- ggplot(surv_df, aes(x = Time, y = SurvivalProbability)) +
           geom_line(color = "red") +
-          labs(title = "Predicted Survival Rate Curve", x = "Time", y = "Survival Rate") +
+          labs(title = "Predicted Survival Rate Curve (RF Model)", x = "Time", y = "Survival Rate") +
           theme_minimal() +
           geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
           theme(
@@ -908,57 +908,53 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         return(interactive_rf_plot)
         #plot_list[["rf_survival"]] <- interactive_rf_plot
       }
-       else {
-        # Add surf.i plot for non-Cox regression, split by variables
+      else {
+        # Create survival curve for XGBoost model using new observation
+        new_observation <- data.frame(matrix(ncol = length(incl), nrow = 1))
+        colnames(new_observation) <- incl
+        
         for (evar in incl) {
-          values <- evar_values[[evar]]
-          if (is.null(values)) {
-            next  # Skip if no values provided for this variable
-          }
-          
-          surf_df <- data.frame()
-          
-          for (val in values) {
-            subset_data <- dataset[dataset[[evar]] == val, ]
-            
-            pred.train <- log(predict(x$best_model, x$best_model$dtrain))
-            pred.test <- log(predict(x$best_model, xgboost::xgb.DMatrix(data = as.matrix(subset_data[, setdiff(names(subset_data), c(time_var, status_var))]))))
-            time_interest <- sort(unique(x$train_data$new_time[x$train_data$status == 1]))
-            basehaz_cum <- basehaz.gbm(x$train_data$time, x$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
-            surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
-            
-            if (length(surf.i) != length(basehaz_cum)) {
-              warning("Length of surf.i and basehaz_cum do not match. Adjusting lengths.")
-              min_length <- min(length(surf.i), length(basehaz_cum))
-              surf.i <- surf.i[1:min_length]
-              basehaz_cum <- basehaz_cum[1:min_length]
-            }
-            
-            surf_df <- rbind(surf_df, data.frame(Time = time_interest[1:length(surf.i)], SurvivalProbability = surf.i, Value = as.factor(val)))
-          }
-          
-          surf_plot <- ggplot(surf_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
-            geom_line() +
-            labs(title = paste("Survival Probability over Time (XGB Model) for", evar), x = "Time", y = "Survival Probability") +
-            theme_minimal() +
-            geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
-            scale_color_discrete(name = evar) +
-            theme(
-              plot.title = element_text(size = 20, face = "bold"),
-              legend.title = element_text(size = 18, face = "bold"),
-              legend.text = element_text(size = 14),
-              axis.title = element_text(size = 18, face = "bold"),
-              axis.text = element_text(size = 14)
-            )
-          
-          # Convert to interactive plotly plot
-          interactive_surf_plot <- ggplotly(surf_plot)
-          
-          plot_list[[paste("surf_i", evar, sep = "_")]] <- interactive_surf_plot
+          new_observation[[evar]] <- evar_values[[evar]]
         }
+        
+        # Predict survival probabilities using XGBoost model
+        pred.test <- log(predict(x$best_model, xgboost::xgb.DMatrix(data = as.matrix(new_observation))))
+        time_interest <- sort(unique(x$train_data$new_time[x$train_data$status == 1]))
+        basehaz_cum <- basehaz.gbm(x$train_data$time, x$train_data$status, log(predict(x$best_model, x$best_model$dtrain)), t.eval = time_interest, cumulative = TRUE)
+        surf.i <- exp(-exp(pred.test) * basehaz_cum)
+        
+        if (length(surf.i) != length(basehaz_cum)) {
+          warning("Length of surf.i and basehaz_cum do not match. Adjusting lengths.")
+          min_length <- min(length(surf.i), length(basehaz_cum))
+          surf.i <- surf.i[1:min_length]
+          basehaz_cum <- basehaz_cum[1:min_length]
+        }
+        
+        # Create data frame for survival probabilities
+        surf_df <- data.frame(Time = time_interest[1:length(surf.i)], SurvivalProbability = surf.i)
+        
+        # Plot survival curve
+        surf_plot <- ggplot(surf_df, aes(x = Time, y = SurvivalProbability)) +
+          geom_line(color = "red") +
+          labs(title = "Predicted Survival Rate Curve (XGB Model)", x = "Time", y = "Survival Rate") +
+          theme_minimal() +
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
+          theme(
+            plot.title = element_text(size = 18),
+            axis.title = element_text(size = 14),
+            legend.position = "none"  # Remove the legend
+          )
+        
+        # Add a vertical line at the median survival time
+       
+        # Convert to interactive plotly plot
+        interactive_surf_plot <- ggplotly(surf_plot)
+        return(interactive_surf_plot)
+        #plot_list[["surf_i"]] <- interactive_surf_plot
       }
-      ncol <- max(ncol, 2)
     }
+      
+  
     if ("importance" %in% plots) {
       if (cox_regression) {
         # Use the predictors specified by the user in incl
@@ -1298,6 +1294,8 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
+
+
 
 
                                             
