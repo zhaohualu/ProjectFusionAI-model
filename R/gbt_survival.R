@@ -832,123 +832,83 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     
     
     if ("km" %in% plots) {
-      surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
+      #surv_obj <- Surv(time = dataset[[time_var]], event = dataset[[status_var]])
       
       if (cox_regression) {
-        # Create a single Cox regression model using all included variables
-        cox_fit <- x$cox_model
+        # Create a new observation data frame using the provided values
+        new_observation <- data.frame(matrix(ncol = length(incl), nrow = 1))
+        colnames(new_observation) <- incl
         
         for (evar in incl) {
-          values <- evar_values[[evar]]
-          if (is.null(values)) {
-            next  # Skip if no values provided for this variable
-          }
-          
-          combined_new_data <- data.frame()
-          legend_labs <- c()
-          
-          # Create new data frames for each value
-          for (val in values) {
-            new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
-            new_data[[evar]] <- val
-            for (covariate in setdiff(names(dataset), c(time_var, status_var, evar))) {
-              if (is.numeric(dataset[[covariate]])) {
-                new_data[[covariate]] <- mean(dataset[[covariate]], na.rm = TRUE)
-              } else {
-                new_data[[covariate]] <- sort(unique(dataset[[covariate]]))[1]
-              }
-            }
-            combined_new_data <- rbind(combined_new_data, new_data)
-            legend_labs <- c(legend_labs, paste(evar, "=", val))
-          }
-          
-          # Ensure unique rows in combined_new_data
-          combined_new_data <- unique(combined_new_data)
-          
-          fit <- survfit(cox_fit, newdata = combined_new_data)
-          
-          # Plot survival curves
-          ggsurv <- ggsurvplot(fit,
-                               conf.int = FALSE,  # Exclude confidence intervals
-                               legend.labs = legend_labs,
-                               ggtheme = theme_minimal(),
-                               data = combined_new_data)
-          
-          # Customize plot
-          cox_plot <- ggsurv$plot +
-            labs(title = paste("Cox Regression Model for", evar), x = "Time", y = "Survival Probability") +
-            geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
-            theme(
-              plot.title = element_text(size = 20, face = "bold"),
-              axis.title = element_text(size = 18, face = "bold"),
-              axis.text = element_text(size = 14),
-              legend.title = element_text(size = 18, face = "bold"),
-              legend.text = element_text(size = 14)
-            )
-          
-          # Convert to interactive plotly plot
-          interactive_cox_plot <- ggplotly(cox_plot)
-          
-          plot_list[[paste("cox_regression", evar, sep = "_")]] <- interactive_cox_plot
+          new_observation[[evar]] <- evar_values[[evar]]
         }
+        
+        # Ensure new_observation is named and has proper format
+        new_observation <- as.data.frame(new_observation)
+        
+        # Predict survival probabilities using the Cox model explainer
+        survival_probabilities <- predict(x$cph_exp, new_observation)
+        
+        # Create a data frame for survival probabilities
+        surv_df <- data.frame(
+          Time = seq_along(survival_probabilities),
+          SurvivalProbability = survival_probabilities
+        )
+        
+        # Plot survival curve
+        cox_plot <- ggadjustedcurves(
+          fit = x$cox_model,
+          data = new_observation,
+          ylab = "Survival Rate") + labs(title = "Predicted Survival Rate Curve") + 
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) 
+
+        # Convert to interactive plotly plot
+        interactive_cox_plot <- ggplotly(cox_plot)
+        return(interactive_cox_plot)
+        #plot_list[["cox_regression"]] <- interactive_cox_plot
+        
       } else if (random_forest) {
         # Create a Random Forest Survival model using all included variables
         rf_fit <- x$best_rf_model
         test_data <- x$test_data
+        
+        # Create new data frame with user-provided values
+        new_observation <- data.frame(matrix(ncol = length(incl), nrow = 1))
+        colnames(new_observation) <- incl
+        
         for (evar in incl) {
-          values <- evar_values[[evar]]
-          if (is.null(values)) {
-            next  # Skip if no values provided for this variable
-          }
-          
-          combined_new_data <- data.frame()
-          legend_labs <- c()
-          
-          # Create new data frames for each value
-          for (val in values) {
-            new_data <- dataset[1, , drop = FALSE]  # Create a single-row data frame with the same structure as dataset
-            new_data[[evar]] <- val
-            for (covariate in setdiff(names(dataset), c(time_var, status_var, evar))) {
-              if (is.numeric(dataset[[covariate]])) {
-                new_data[[covariate]] <- mean(dataset[[covariate]], na.rm = TRUE)
-              } else {
-                new_data[[covariate]] <- sort(unique(dataset[[covariate]]))[1]
-              }
-            }
-            combined_new_data <- rbind(combined_new_data, new_data)
-            legend_labs <- c(legend_labs, paste(evar, "=", val))
-          }
-          
-          # Ensure unique rows in combined_new_data
-          combined_new_data <- unique(combined_new_data)
-          
-          rf_pred <- predict(rf_fit, newdata = combined_new_data)
-          
-          # Create survival probabilities data frame
-          surv_df <- data.frame(Time = rep(rf_pred$time.interest, each = nrow(combined_new_data)),
-                                SurvivalProbability = as.vector(t(rf_pred$survival)),
-                                Value = rep(legend_labs, each = length(rf_pred$time.interest)))
-          
-          # Plot survival curves
-          rf_plot <- ggplot(surv_df, aes(x = Time, y = SurvivalProbability, color = Value)) +
-            geom_line() +
-            labs(title = paste("Random Forest Survival Model for", evar), x = "Time", y = "Survival Probability") +
-            theme_minimal() +
-            geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
-            theme(
-              plot.title = element_text(size = 20, face = "bold"),
-              axis.title = element_text(size = 18, face = "bold"),
-              axis.text = element_text(size = 14),
-              legend.title = element_text(size = 18, face = "bold"),
-              legend.text = element_text(size = 14)
-            )
-          
-          # Convert to interactive plotly plot
-          interactive_rf_plot <- ggplotly(rf_plot)
-          
-          plot_list[[paste("rf_survival", evar, sep = "_")]] <- interactive_rf_plot
+          new_observation[[evar]] <- evar_values[[evar]]
         }
-      } else {
+        
+        # Predict survival probabilities using Random Forest model
+        rf_pred <- predict(rf_fit, newdata = new_observation)
+        
+        # Create survival probabilities data frame
+        surv_df <- data.frame(
+          Time = rf_pred$time.interest,
+          SurvivalProbability = as.vector(rf_pred$survival)
+        )
+        
+        # Plot survival curve
+        rf_plot <- ggplot(surv_df, aes(x = Time, y = SurvivalProbability)) +
+          geom_line(color = "red") +
+          labs(title = "Predicted Survival Rate Curve", x = "Time", y = "Survival Rate") +
+          theme_minimal() +
+          geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) +
+          theme(
+            plot.title = element_text(size = 18),
+            axis.title = element_text(size = 14),
+            legend.position = "none"  # Remove the legend
+          )
+        
+        # Add a vertical line at the median survival time
+   
+        # Convert to interactive plotly plot
+        interactive_rf_plot <- ggplotly(rf_plot)
+        return(interactive_rf_plot)
+        #plot_list[["rf_survival"]] <- interactive_rf_plot
+      }
+       else {
         # Add surf.i plot for non-Cox regression, split by variables
         for (evar in incl) {
           values <- evar_values[[evar]]
@@ -1092,10 +1052,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
         
         for (time_point in roc_times) {
           # Generate survivalROC object
-          roc_obj <- survivalROC(Stime = test_data[[time_var]], 
-                                 status = test_data[[status_var]], 
-                                 marker = predicted, 
-                                 predict.time = time_point, 
+          roc_obj <- survivalROC(Stime = test_data[[time_var]],
+                                 status = test_data[[status_var]],
+                                 marker = predicted,
+                                 predict.time = time_point,
                                  method = "KM")
           # Add data to the dataframe
           roc_df <- rbind(roc_df, data.frame(FPR = roc_obj$FP, TPR = roc_obj$TP, Time = time_point))
@@ -1133,10 +1093,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           rf_pred <- log(predictSurvProb(rf_fit, newdata = x$test_data, times = time_point))
           
           # Generate survivalROC object
-          roc_obj <- survivalROC(Stime = x$test_data[[time_var]], 
-                                 status = x$test_data[[status_var]], 
-                                 marker = rf_pred, 
-                                 predict.time = time_point, 
+          roc_obj <- survivalROC(Stime = x$test_data[[time_var]],
+                                 status = x$test_data[[status_var]],
+                                 marker = rf_pred,
+                                 predict.time = time_point,
                                  method = "KM")
           
           # Add data to the dataframe
@@ -1181,10 +1141,10 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           xgb_pred <- predict(model, newdata = as.matrix(test_data[, setdiff(names(test_data), c(time_var, status_var))]))
           
           # Generate survivalROC object for the specified time point
-          roc_obj <- survivalROC(Stime = test_data[[time_var]], 
-                                 status = test_data[[status_var]], 
-                                 marker = xgb_pred, 
-                                 predict.time = time_point, 
+          roc_obj <- survivalROC(Stime = test_data[[time_var]],
+                                 status = test_data[[status_var]],
+                                 marker = xgb_pred,
+                                 predict.time = time_point,
                                  method = "KM")
           
           # Add data to the dataframe
@@ -1258,7 +1218,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           y_true = Surv(x$test_data[[time_var]], x$test_data[[status_var]]),
           surv = surf_i,
           times = time_interest
-        )        
+        )
         # Plot Brier scores over time
         brier_plot <- ggplot(data.frame(time = time_interest, brier_score = brier_scores), aes(x = time, y = brier_score)) +
           geom_line(color = "blue") +
@@ -1281,15 +1241,15 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
       if (cox_regression) {
         # Calculate Brier scores for Cox model
         cox_fit <- x$cph_exp
-        residual <- plot(model_diagnostics(explainer = explain))
+        residual <- plot(survex::model_diagnostics(explainer = cox_fit))
         return(residual)
         #return(brier_plot)
         #plot_list[["brier_score_cox"]] <- NULL
       }
       else if (random_forest) {
         rf_fit <- x$best_rf_model
-        explainer_rf <- explain(rf_fit)
-        residual <- plot(model_diagnostics(explainer = explainer_rf))
+        explainer_rf <- survex::explain(rf_fit)
+        residual <- plot(survex::model_diagnostics(explainer = explainer_rf))
         return(residual)
       }
       else {
@@ -1338,6 +1298,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
+
 
                                             
 
