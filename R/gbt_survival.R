@@ -546,6 +546,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     df_name <- pred_data
   }
   explanatory_vars <- names(object$best_model$test_data)[!(names(object$best_model$test_data) %in% c("RowID", "new_time", "time", "status"))]
+  result <- list(text = NULL, plot = NULL)
   
   if (cox_regression) {
     if (!is.null(object$cox_model)) {
@@ -557,10 +558,10 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       }
       
       # Use predict_profile from the explainer to get predictions for the new observation
-      profile <- predict_profile(object$cph_exp, new_observation = new_observation_df, variables = object$evar)
+      profile <- survex::predict_profile(object$cph_exp, new_observation = new_observation_df, variables = object$evar)
       # Filter out the profile to find the specific prediction for the new observation
       profile_df <- profile$result
- 
+      
       specific_prediction <- profile_df %>%
         dplyr::filter(if_all(all_of(names(new_observation_df)), ~ . == new_observation_df[[deparse(substitute(.))]]))
       
@@ -568,17 +569,16 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       # If needed, return the survival probabilities or risk scores from the specific prediction
       # Here, we'll assume the user wants to see the survival probabilities
       survival_prob_df <- specific_prediction %>%
-        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_` )%>%
-        head(20)
-      plot <- plot(predict_profile(object$cph_exp, new_observation = new_observation_df))
-      print(plot)
+        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_` )
+      result$plot <- plot(survex::predict_profile(object$cph_exp, new_observation = new_observation_df))
+      
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
     }
   } else if (random_forest) {
     if (!is.null(object$best_rf_model)) {
       rf_fit <- object$best_rf_model
-      rf_fit$explainer_rf <- suppressMessages(explain(rf_fit))
+      rf_fit$explainer_rf <- suppressMessages(survex::explain(rf_fit))
       # Create a new observation data frame if provided
       if (!is.null(new_observation)) {
         new_observation_df <- as.data.frame(t(new_observation))
@@ -587,7 +587,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       }
       
       # Use predict_profile from the explainer to get predictions for the new observation
-      profile <- predict_profile(rf_fit$explainer_rf, new_observation = new_observation_df, variables = object$evar)
+      profile <- survex::predict_profile(rf_fit$explainer_rf, new_observation = new_observation_df, variables = object$evar)
       # Filter out the profile to find the specific prediction for the new observation
       profile_df <- profile$result
       
@@ -598,8 +598,9 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       # If needed, return the survival probabilities or risk scores from the specific prediction
       # Here, we'll assume the user wants to see the survival probabilities
       survival_prob_df <- specific_prediction %>%
-        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_`)%>%
-    head(20)
+        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_`)
+      result$plot <- plot(survex::predict_profile(rf_fit$explainer_rf, new_observation = new_observation_df))
+ 
       
     } else {
       stop("Random Forest model not found in the object. Please ensure random_forest was set to TRUE when calling gbt_survival.")
@@ -628,13 +629,16 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   )
   
   # Limit the number of rows shown to 10 for the output
-  survival_prob_df_shown <- head(survival_prob_df)
-
+  survival_prob_df_shown <- survival_prob_df[1:15, ]
   # Print the header and the data frame
-  cat(header, "\n\n")
-  
   survival_prob_df %>%
     set_attr("radiant_pred_data", df_name)
+ # Print the header and the data frame
+ # cat(header, "\n\n")
+  result$text <- paste(header, "\n\n", paste(capture.output(print(survival_prob_df_shown)), collapse = "\n"), sep = "\n")
+  
+  
+  return(result)
 }
 
 
