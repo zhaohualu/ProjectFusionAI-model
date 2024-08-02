@@ -249,7 +249,7 @@ output$ui_gbt_survival <- renderUI({
       )
     ),
     conditionalPanel(
-      condition = "input.tabs_gbt_survival == 'Predict'",
+      condition = "input.tabs_gbt_survival == 'Survival Probability Prediction'",
       wellPanel(
         uiOutput("ui_new_observation"),  # Add this line
         selectInput(
@@ -409,16 +409,7 @@ observeEvent(input$random_forest, {
   if (gbt_survival_available() != "available") {
     return(gbt_survival_available())
   }
-  #  if (is.empty(input$gbt_survival_predict, "none")) {
-  #return("** Select prediction input **")
-  #}
 
-  #if ((input$gbt_survival_predict == "data" || input$gbt_survival_predict == "datacmd") && is.empty(input$gbt_survival_pred_data)) {
-  #return("** Select data for prediction **")
-  # }
-  #if (input$gbt_survival_predict == "cmd" && is.empty(input$gbt_survival_pred_cmd)) {
-  # return("** Enter prediction commands **")
-  # }
   new_obs <- sapply(input$gbt_survival_evar, function(var) {
     input[[paste0("new_obs_", var)]]
   }, simplify = TRUE, USE.NAMES = TRUE)
@@ -429,7 +420,7 @@ observeEvent(input$random_forest, {
 
   # Check if all new_obs values are non-NULL and numeric
   if (any(sapply(new_obs, is.null))) {
-    return("** Please enter values for all variables **")
+    return(list(text = "** Please enter values for all variables **", plot = NULL))
   }
 
   # Format new_obs as named vector with proper format
@@ -442,6 +433,27 @@ observeEvent(input$random_forest, {
     do.call(predict, gbti)
   })
 })
+
+output$predict_gbt_survival_text <- renderText({
+  result <- tryCatch({
+    .predict_gbt_survival()
+  }, error = function(e) {
+    list(text = "Please enter values for all variables.", plot = NULL)
+  })
+  result$text
+})
+
+output$predict_gbt_survival_plot <- renderPlot({
+  result <- tryCatch({
+    .predict_gbt_survival()
+  }, error = function(e) {
+    list(text = NULL, plot = NULL)
+  })
+  if (!is.null(result$plot)) {
+    suppressWarnings(print(result$plot))
+  }
+})
+
 
 .predict_print_gbt_survival <- reactive({
   .predict_gbt_survival() %>%
@@ -524,19 +536,28 @@ output$gbt_survival <- renderUI({
       )
     ),
     tabPanel(
-      "Predict",
+      "Survival Probability Prediction",
       conditionalPanel(
         "input.gbt_survival_pred_plot == true",
         download_link("dlp_gbt_survival_pred"),
         plotlyOutput("predict_plot_gbt_survival", width = "80%", height = "90%")
       ),
       download_link("dl_gbt_survival_pred"), br(),
-      verbatimTextOutput("predict_gbt_survival")
+        fluidRow(
+          column(6, verbatimTextOutput("predict_gbt_survival_text")),
+          column(6, wellPanel(
+            h4("Ceteris Paribus Survival Profile Interpretation"),
+            p("The ceteris paribus survival profile plot helps to understand how the predicted survival probability changes with different values of a particular variable, while keeping other variables constant."),
+            p("In the plot, the x-axis represents the time, and the y-axis represents the survival probability. Different lines represent different values of the variable of interest."),
+            p("The red line in the plot represents the survival function for the value you indicated of the variable being analyzed. This allows you to compare the effect of different variable values against this baseline.")
+          ))
+        ),
+      plotOutput("predict_gbt_survival_plot", width = "1200px", height = "500px")
     ),
     tabPanel(
       "Plot",
       download_link("dlp_gbt_survival"),
-      plotlyOutput("plot_gbt_survival", width = "900px", height = "600px")
+      plotlyOutput("plot_gbt_survival", width = "1200px", height = "600px")
     )
   )
 
@@ -737,6 +758,8 @@ observeEvent(input$modal_gbt_survival_screenshot, {
   gbt_survival_report()
   removeModal() # remove shiny modal after save
 })
+
+
 
 
 
