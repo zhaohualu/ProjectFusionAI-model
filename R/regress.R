@@ -236,6 +236,10 @@ summary.regress <- function(object, sum_check = "", conf_lev = .95,
   reg_fit <- glance(object$model) %>% round(dec)
   cat("\nSignif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n")
   cat("R-squared:", paste0(reg_fit$r.squared, ", "), "Adjusted R-squared:", reg_fit$adj.r.squared, "\n")
+  cat("R-squared (R²) indicates the proportion of the variance in the dependent variable that is predictable from the independent variables.\n")
+  cat("Adjusted R-squared adjusts R² for the number of predictors in the model, providing a more accurate measure when comparing\n")
+  cat("models with different numbers of predictors. Higher values of R-squared and Adjusted R-squared (closer to 1) \n")
+  cat("indicate a better fit of the model to the data.\n\n")
 
   ## if stepwise returns only an intercept
   if (nrow(coeff) == 1) {
@@ -243,8 +247,14 @@ summary.regress <- function(object, sum_check = "", conf_lev = .95,
   }
 
   if (reg_fit["p.value"] < .001) reg_fit["p.value"] <- "< .001"
-  cat("F-statistic:", reg_fit$statistic, paste0("df(", reg_fit$df, ",", reg_fit$df.residual, "), p.value"), reg_fit$p.value)
-  cat("\nNr obs:", format_nr(reg_fit$nobs, dec = 0), "\n\n")
+  cat("F-statistic:", reg_fit$statistic, paste0("df(", reg_fit$df, ",", reg_fit$df.residual, "), p.value"), reg_fit$p.value, "\n")
+  cat("The F-statistic tests the overall significance of the model.\n")
+  cat("It compares the model with no predictors (only an intercept) and determines if the model with predictors provides a better fit.\n")
+  cat("The p-value indicates the probability that the observed F-statistic would occur if the null hypothesis were true \n")
+  cat("(i.e., if none of the explanatory variables have an effect). A smaller p-value (typically < 0.05) indicates strong evidence\n")
+  cat("against the null hypothesis, suggesting that the model explains a significant portion of the variance in the dependent variable.\n\n")
+
+  cat("Nr obs:", format_nr(reg_fit$nobs, dec = 0), "\n\n")
 
   if (anyNA(object$model$coeff)) {
     cat("The set of explanatory variables exhibit perfect multicollinearity.\nOne or more variables were dropped from the estimation.\n")
@@ -395,6 +405,7 @@ summary.regress <- function(object, sum_check = "", conf_lev = .95,
     }
   }
 }
+
 
 #' Prediction Plots
 #'
