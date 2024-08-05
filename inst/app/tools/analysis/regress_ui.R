@@ -132,7 +132,7 @@ output$ui_reg_rvar <- renderUI({
     selected = state_single("reg_rvar", vars), multiple = FALSE
   )
 })
-library(shinyBS)
+
 output$ui_reg_evar <- renderUI({
   req(available(input$reg_rvar))
   vars <- varnames()
@@ -146,8 +146,6 @@ output$ui_reg_evar <- renderUI({
     selected = state_multiple("reg_evar", vars, isolate(input$reg_evar)),
     multiple = TRUE, size = min(10, length(vars)), selectize = FALSE
   )
-  bsTooltip(id = "reg_evar", title = "Select one or more variables to be used as predictors in the model.", placement = "right", trigger = "hover")
-
 })
 
 output$ui_reg_incl <- renderUI({
@@ -223,7 +221,7 @@ output$ui_reg_show_interactions <- renderUI({
 output$ui_reg_int <- renderUI({
   choices <- character(0)
   if (isolate("reg_show_interactions" %in% names(input)) &&
-    is.empty(input$reg_show_interactions)) {
+      is.empty(input$reg_show_interactions)) {
   } else if (is.empty(input$reg_show_interactions)) {
     return()
   } else {
@@ -292,14 +290,14 @@ output$ui_regress <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_regress == 'Summary'",
+      condition = "input.tabs_regress == 'Model Summary'",
       wellPanel(
         actionButton("reg_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_regress == 'Summary'",
+        condition = "input.tabs_regress == 'Model Summary'",
         uiOutput("ui_reg_rvar"),
         uiOutput("ui_reg_evar"),
         conditionalPanel(
@@ -321,7 +319,7 @@ output$ui_regress <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_regress == 'Predict'",
+        condition = "input.tabs_regress == 'Predictions'",
         selectInput(
           "reg_predict",
           label = "Prediction input type:", reg_predict,
@@ -363,7 +361,7 @@ output$ui_regress <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_regress == 'Plot'",
+        condition = "input.tabs_regress == 'Model Performance Plots'",
         selectInput(
           "reg_plots", "Plots:",
           choices = reg_plots,
@@ -397,9 +395,9 @@ output$ui_regress <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "(input.tabs_regress == 'Summary' && input.reg_sum_check != undefined && input.reg_sum_check.indexOf('confint') >= 0) ||
-                     (input.tabs_regress == 'Predict' && input.reg_predict != 'none') ||
-                     (input.tabs_regress == 'Plot' && input.reg_plots == 'coef')",
+        condition = "(input.tabs_regress == 'Model Summary' && input.reg_sum_check != undefined && input.reg_sum_check.indexOf('confint') >= 0) ||
+                     (input.tabs_regress == 'Predictions' && input.reg_predict != 'none') ||
+                     (input.tabs_regress == 'Model Performance Plots' && input.reg_plots == 'coef')",
         sliderInput(
           "reg_conf_lev", "Confidence level:",
           min = 0.80,
@@ -408,7 +406,7 @@ output$ui_regress <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_regress == 'Summary'",
+        condition = "input.tabs_regress == 'ModelSummary'",
         tags$table(
           tags$td(uiOutput("ui_reg_store_res_name")),
           tags$td(actionButton("reg_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
@@ -476,6 +474,7 @@ reg_pred_plot_height <- function() {
 }
 
 # output is called from the main radiant ui.R
+# output is called from the main radiant ui.R
 output$regress <- renderUI({
   register_print_output("summary_regress", ".summary_regress")
   register_print_output("predict_regress", ".predict_print_regress")
@@ -493,12 +492,17 @@ output$regress <- renderUI({
   reg_output_panels <- tabsetPanel(
     id = "tabs_regress",
     tabPanel(
-      "Summary",
+      "Model Summary",
       download_link("dl_reg_coef"), br(),
       verbatimTextOutput("summary_regress")
     ),
     tabPanel(
-      "Predict",
+      "Model Performance Plots",
+      download_link("dlp_regress"),
+      plotOutput("plot_regress", width = "100%", height = "100%")
+    ),
+    tabPanel(
+      "Predictions",
       conditionalPanel(
         "input.reg_pred_plot == true",
         download_link("dlp_reg_pred"),
@@ -506,11 +510,6 @@ output$regress <- renderUI({
       ),
       download_link("dl_reg_pred"), br(),
       verbatimTextOutput("predict_regress")
-    ),
-    tabPanel(
-      "Plot",
-      download_link("dlp_regress"),
-      plotOutput("plot_regress", width = "100%", height = "100%")
     )
   )
 
@@ -521,6 +520,7 @@ output$regress <- renderUI({
     output_panels = reg_output_panels
   )
 })
+
 
 reg_available <- eventReactive(input$reg_run, {
   if (not_available(input$reg_rvar)) {
@@ -657,7 +657,7 @@ regress_report <- function() {
   }
 
   if (!is.empty(input$reg_predict, "none") &&
-    (!is.empty(input$reg_pred_data) || !is.empty(input$reg_pred_cmd))) {
+      (!is.empty(input$reg_pred_data) || !is.empty(input$reg_pred_cmd))) {
     pred_args <- clean_args(reg_pred_inputs(), reg_pred_args[-1])
 
     if (!is.empty(pred_args$pred_cmd)) {
