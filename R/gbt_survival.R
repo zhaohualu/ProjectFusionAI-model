@@ -571,7 +571,6 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       survival_prob_df <- specific_prediction %>%
         dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_` )
       result$plot <- plot(survex::predict_profile(object$cph_exp, new_observation = new_observation_df))
-      
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
     }
@@ -607,16 +606,57 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
     }
   } else {
     # Extract time and status variables
-    pred.train <- log(predict(object$best_model, object$best_model$dtrain))
-    pred.test  <- log(predict(object$best_model, object$best_model$dtest))
-    time_interest <- sort(unique(object$train_data$new_time[object$train_data$status == 1]))
-    basehaz_cum <- basehaz.gbm(object$train_data$time, object$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
-    surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
+    if (!is.null(object$best_model)) {
+      # Create a new observation data frame if provided
+      if (!is.null(new_observation)) {
+        new_observation_df <- as.data.frame(t(new_observation))
+      }else {
+        stop("Please provide new_observation for prediction using XGBoost model.")
+      }
+      pred.train <- log(predict(object$best_model, object$best_model$dtrain))
+      pred.test <- log(predict(object$best_model, xgb.DMatrix(data = model.matrix(~ . - 1, data = new_observation_df))))
+      time_interest <- sort(unique(object$train_data$new_time[object$train_data$status == 1]))
+      basehaz_cum <- basehaz.gbm(object$train_data$time, object$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
+      surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
     # Extract explanatory variables from xgb.DMatrix
-    
+
     # Combine predictions with explanatory variables from the test set
-    survival_prob_df <- data.frame(SurvivalProbability = surf.i )
-  }
+      survival_prob_df <- data.frame(
+        new_observation_df,
+        times = time_interest,
+        yhat = surf.i
+      ) 
+      
+      plots <- list()
+      for (var in explanatory_vars) {
+        temp_data <- new_observation_df[]
+        
+        # Calculate prediction for the updated temp_data
+        temp_pred <- log(predict(object$best_model, xgb.DMatrix(data = model.matrix(~ . - 1, data = temp_data))))
+        temp_surf_i <- exp(-exp(temp_pred[1]) * basehaz_cum)
+        
+        
+        # Create a plot data frame
+        plot_data <- data.frame(
+          times = time_interest,
+          yhat = temp_surf_i,
+          var_value = temp_data[[var]]
+        )
+
+        plot <- ggplot(plot_data, aes(x = times, y = yhat)) +
+          geom_line(color = "red") +
+          labs(title = paste("Survival Curve for", var, "=", new_observation_df[[var]]), 
+               x = "Time", y = "Survival Probability") +
+          theme_minimal() 
+  
+        plots[[var]] <- plot
+      }
+      
+      }
+      result$plot <- do.call(grid.arrange, c(plots, ncol = 2))
+      
+    }
+    
   # Create the formatted output
   header <- paste(
     "Survival Prediction",
@@ -629,7 +669,7 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   )
   
   # Limit the number of rows shown to 10 for the output
-  survival_prob_df_shown <- survival_prob_df[1:15, ]
+  survival_prob_df_shown <- survival_prob_df[1:30, ]
   # Print the header and the data frame
   survival_prob_df %>%
     set_attr("radiant_pred_data", df_name)
@@ -639,7 +679,8 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   
   
   return(result)
-}
+  }
+
 
 
 #' Print method for predict.gbt_survival
