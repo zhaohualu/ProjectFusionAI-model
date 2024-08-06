@@ -33,6 +33,10 @@ logit_inputs <- reactive({
   logit_args$arr <- if (input$show_filter) input$data_arrange else ""
   logit_args$rows <- if (input$show_filter) input$data_rows else ""
   logit_args$dataset <- input$dataset
+
+  # Update the variable type
+  logit_args$variable <- if (input$variable_type == "Numeric") "num" else "cat"
+
   for (i in r_drop(names(logit_args))) {
     logit_args[[i]] <- input[[paste0("logit_", i)]]
   }
@@ -265,7 +269,7 @@ output$ui_logit_show_interactions <- renderUI({
 output$ui_logit_int <- renderUI({
   choices <- character(0)
   if (isolate("logit_show_interactions" %in% names(input)) &&
-    is.empty(input$logit_show_interactions)) {
+      is.empty(input$logit_show_interactions)) {
   } else if (is.empty(input$logit_show_interactions)) {
     return()
   } else {
@@ -333,14 +337,14 @@ output$ui_logistic <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_logistic == 'Summary'",
+      condition = "input.tabs_logistic == 'Model Summary'",
       wellPanel(
         actionButton("logit_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Summary'",
+        condition = "input.tabs_logistic == 'Model Summary'",
         uiOutput("ui_logit_rvar"),
         uiOutput("ui_logit_lev"),
         uiOutput("ui_logit_evar"),
@@ -364,7 +368,7 @@ output$ui_logistic <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Predict'",
+        condition = "input.tabs_logistic == 'Predictions'",
         selectInput(
           "logit_predict",
           label = "Prediction input type:", logit_predict,
@@ -406,7 +410,7 @@ output$ui_logistic <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Plot'",
+        condition = "input.tabs_logistic == 'Model Performance Plots'",
         selectInput(
           "logit_plots", "Plots:",
           choices = logit_plots,
@@ -437,9 +441,9 @@ output$ui_logistic <- renderUI({
       ),
       # Using && to check that input.logit_sum_check is not null (must be &&)
       conditionalPanel(
-        condition = "(input.tabs_logistic == 'Summary' && input.logit_sum_check != undefined && (input.logit_sum_check.indexOf('confint') >= 0 || input.logit_sum_check.indexOf('odds') >= 0)) ||
-                     (input.tabs_logistic == 'Predict' && input.logit_predict != 'none') ||
-                     (input.tabs_logistic == 'Plot' && input.logit_plots == 'coef')",
+        condition = "(input.tabs_logistic == 'Model Summary' && input.logit_sum_check != undefined && (input.logit_sum_check.indexOf('confint') >= 0 || input.logit_sum_check.indexOf('odds') >= 0)) ||
+                     (input.tabs_logistic == 'Predictions' && input.logit_predict != 'none') ||
+                     (input.tabs_logistic == 'Model Performance Plots' && input.logit_plots == 'coef')",
         sliderInput(
           "logit_conf_lev", "Confidence level:",
           min = 0.80,
@@ -448,7 +452,7 @@ output$ui_logistic <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Summary'",
+        condition = "input.tabs_logistic == 'Model Summary'",
         tags$table(
           # tags$td(textInput("logit_store_res_name", "Store residuals:", state_init("logit_store_res_name", "residuals_logit"))),
           tags$td(uiOutput("ui_logit_store_res_name")),
@@ -532,12 +536,17 @@ output$logistic <- renderUI({
   logit_output_panels <- tabsetPanel(
     id = "tabs_logistic",
     tabPanel(
-      "Summary",
+      "Model Summary",
       download_link("dl_logit_coef"), br(),
       verbatimTextOutput("summary_logistic")
     ),
     tabPanel(
-      "Predict",
+      "Model Performance Plots",
+      download_link("dlp_logistic"),
+      plotOutput("plot_logistic", width = "100%", height = "100%")
+    ),
+    tabPanel(
+      "Predictions",
       conditionalPanel(
         "input.logit_pred_plot == true",
         download_link("dlp_logit_pred"),
@@ -545,11 +554,6 @@ output$logistic <- renderUI({
       ),
       download_link("dl_logit_pred"), br(),
       verbatimTextOutput("predict_logistic")
-    ),
-    tabPanel(
-      "Plot",
-      download_link("dlp_logistic"),
-      plotOutput("plot_logistic", width = "100%", height = "100%")
     )
   )
 
@@ -704,7 +708,7 @@ logistic_report <- function() {
   }
 
   if (!is.empty(input$logit_predict, "none") &&
-    (!is.empty(input$logit_pred_data) || !is.empty(input$logit_pred_cmd))) {
+      (!is.empty(input$logit_pred_data) || !is.empty(input$logit_pred_cmd))) {
     pred_args <- clean_args(logit_pred_inputs(), logit_pred_args[-1])
 
     if (!is.empty(pred_args$pred_cmd)) {
