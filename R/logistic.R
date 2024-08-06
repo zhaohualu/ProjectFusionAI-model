@@ -320,11 +320,22 @@ summary.logistic <- function(object, sum_check = "", conf_lev = .95,
     (function(x) if (x < .001) "< .001" else round(x, dec))
 
   cat(paste0("\nPseudo R-squared:", logit_fit$r2, ", Adjusted Pseudo R-squared:", logit_fit$r2_adj))
+  cat("\n**R-squared (R²) indicates the proportion of the variance in the dependent variable that is predictable from the independent variables.\n")
+  cat("**Adjusted R-squared adjusts R² for the number of predictors in the model, providing a more accurate measure when comparing\n")
+  cat("models with different numbers of predictors. Higher values of R-squared and Adjusted R-squared (closer to 1) \n")
+  cat("indicate a better fit of the model to the data.\n\n")
+
   cat(paste0("\nAUC: ", logit_fit$auc, ", Log-likelihood: ", logit_fit$logLik, ", AIC: ", logit_fit$AIC, ", BIC: ", logit_fit$BIC))
+  cat("\n**AUC (Area Under the Curve):** A measure of the model's ability to distinguish between classes. A higher AUC indicates better model performance.\n")
+  cat("**AIC (Akaike Information Criterion):** A measure used for model comparison, balancing model fit and complexity. Lower AIC values indicate a better model.\n")
+  cat("**BIC (Bayesian Information Criterion):** Similar to AIC but with a higher penalty for the number of parameters, favoring simpler models. Lower BIC values indicate a better model.\n")
+  cat("**Log-likelihood:** A measure of how well the model explains the observed data. Higher log-likelihood values indicate a better fit.\n")
   cat(paste0(
     "\nChi-squared: ", with(logit_fit, null.deviance - deviance) %>% round(dec), " df(",
     with(logit_fit, df.null - df.residual), "), p.value ", chi_pval
   ), "\n")
+  cat("**Chi-squared Test:** Tests the overall significance of the model. A significant Chi-squared value indicates that the model provides a better fit to the data than a model with no predictors.\n")
+  cat("**p-value:** Indicates the probability that the observed data would occur if the null hypothesis were true. A lower p-value (< 0.05) suggests that the predictors are significantly related to the response variable.\n")
   cat("Nr obs:", format_nr(nobs, dec = 0), "\n\n")
 
   if (anyNA(object$model$coeff)) {
@@ -473,6 +484,7 @@ summary.logistic <- function(object, sum_check = "", conf_lev = .95,
     }
   }
 }
+
 
 #' Plot method for the logistic function
 #'
