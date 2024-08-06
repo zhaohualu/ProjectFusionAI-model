@@ -272,14 +272,14 @@ output$ui_crtree <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_crtree == 'Summary'",
+      condition = "input.tabs_crtree == 'Model Summary'",
       wellPanel(
         actionButton("crtree_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_crtree == 'Summary'",
+        condition = "input.tabs_crtree == 'Model Summary'",
         radioButtons(
           "crtree_type",
           label = NULL, c("classification", "regression"),
@@ -308,7 +308,7 @@ output$ui_crtree <- renderUI({
           ))
         ),
         conditionalPanel(
-          condition = "input.tabs_crtree == 'Summary'",
+          condition = "input.tabs_crtree == 'Model Summary'",
           tags$table(
             tags$td(uiOutput("ui_crtree_store_res_name")),
             tags$td(actionButton("crtree_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
@@ -316,7 +316,7 @@ output$ui_crtree <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_crtree == 'Predict'",
+        condition = "input.tabs_crtree == 'Predictions'",
         selectInput(
           "crtree_predict",
           label = "Prediction input type:", reg_predict,
@@ -358,7 +358,7 @@ output$ui_crtree <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_crtree == 'Plot'",
+        condition = "input.tabs_crtree == 'Model Performance Plots'",
         selectInput(
           "crtree_plots", "Plots:",
           choices = ctree_plots,
@@ -459,12 +459,36 @@ output$crtree <- renderUI({
     width_fun = "crtree_plot_width"
   )
 
+  ## Explanation of how to interpret the decision tree
+  explanation <- HTML("
+  <div style='float: right; width: 50%; padding: 10px; border: 1px solid #ddd; margin-left: 20px;'>
+    <h4>How to Interpret the Decision Tree:</h4>
+    <ul>
+      <li><strong>Nodes</strong>: Each numbered line represents a node in the tree.</li>
+      <li><strong>Splits</strong>: The condition for splitting the data is shown (e.g., 'carat < 0.985').</li>
+      <li><strong>n (Number of Observations)</strong>: Indicates how many observations are in each node after the split.</li>
+      <li><strong>Deviance</strong>: Lower deviance in a node indicates that the observations in that node are more similar to each other. High deviance suggests greater variability.</li>
+      <li><strong>yval (Predicted Value)</strong>: The mean value of the response variable for the observations in that node. It represents the prediction made by the tree for observations falling into that node.</li>
+      <li><strong>Terminal Nodes</strong>: These nodes provide final predictions and do not split further. They are marked with an asterisk ('*').</li>
+      <li><strong>Intermediate Nodes</strong>: These nodes lead to further splits and help in progressively refining the predictions.</li>
+      <li><strong>Complexity Parameter (cp)</strong>: Minimum proportion of root node deviance required for split. Lower values allow for more splits.</li>
+      <li><strong>Weights (wts)</strong>: Optional weights to use in estimation, useful for handling unbalanced data.</li>
+    </ul>
+  </div>")
+
   ## two separate tabs
   crtree_output_panels <- tabsetPanel(
     id = "tabs_crtree",
-    tabPanel("Summary", verbatimTextOutput("summary_crtree")),
     tabPanel(
-      "Predict",
+      "Model Summary",
+      div(
+        style = "overflow: hidden;",
+        explanation,
+        verbatimTextOutput("summary_crtree")
+      )
+    ),
+    tabPanel(
+      "Predictions",
       conditionalPanel(
         "input.crtree_pred_plot == true",
         download_link("dlp_crtree_pred"),
@@ -474,7 +498,7 @@ output$crtree <- renderUI({
       verbatimTextOutput("predict_crtree")
     ),
     tabPanel(
-      "Plot",
+      "Model Performance Plots",
       conditionalPanel(
         "input.crtree_plots == 'tree'",
         HTML("<i title='Save plot' class='fa fa-download action-button alignright' href='#crtree_screenshot2' id='crtree_screenshot2' onclick='generate_crtree_plot();'></i>"),
