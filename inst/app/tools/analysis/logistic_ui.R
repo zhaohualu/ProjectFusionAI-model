@@ -66,7 +66,7 @@ logit_plot_inputs <- reactive({
   for (i in names(logit_plot_args)) {
     logit_plot_args[[i]] <- input[[paste0("logit_", i)]]
   }
-
+  
   # cat(paste0(names(logit_plot_args), " ", logit_plot_args, collapse = ", "), file = stderr(), "\n")
   logit_plot_args
 })
@@ -83,7 +83,7 @@ logit_pred_inputs <- reactive({
   for (i in names(logit_pred_args)) {
     logit_pred_args[[i]] <- input[[paste0("logit_", i)]]
   }
-
+  
   logit_pred_args$pred_cmd <- logit_pred_args$pred_data <- ""
   if (input$logit_predict == "cmd") {
     logit_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$logit_pred_cmd) %>%
@@ -97,10 +97,10 @@ logit_pred_inputs <- reactive({
       gsub("\"", "\'", .)
     logit_pred_args$pred_data <- input$logit_pred_data
   }
-
+  
   ## setting value for prediction interval type
   logit_pred_args$interval <- "confidence"
-
+  
   logit_pred_args
 })
 
@@ -147,7 +147,7 @@ output$ui_logit_evar <- renderUI({
   if (length(vars) > 0 && input$logit_rvar %in% vars) {
     vars <- vars[-which(vars == input$logit_rvar)]
   }
-
+  
   selectInput(
     inputId = "logit_evar", label = "Explanatory variables:", choices = vars,
     selected = state_multiple("logit_evar", vars, isolate(input$logit_evar)),
@@ -205,7 +205,7 @@ output$ui_logit_wts <- renderUI({
       names()
   }
   vars <- c("None", vars)
-
+  
   selectInput(
     inputId = "logit_wts", label = "Weights:", choices = vars,
     selected = state_single("logit_wts", vars),
@@ -265,7 +265,7 @@ output$ui_logit_show_interactions <- renderUI({
 output$ui_logit_int <- renderUI({
   choices <- character(0)
   if (isolate("logit_show_interactions" %in% names(input)) &&
-    is.empty(input$logit_show_interactions)) {
+      is.empty(input$logit_show_interactions)) {
   } else if (is.empty(input$logit_show_interactions)) {
     return()
   } else {
@@ -288,7 +288,7 @@ output$ui_logit_int <- renderUI({
       }
     }
   }
-
+  
   selectInput(
     "logit_int",
     label = NULL,
@@ -333,14 +333,14 @@ output$ui_logistic <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_logistic == 'Summary'",
+      condition = "input.tabs_logistic == 'Model Summary'",
       wellPanel(
         actionButton("logit_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Summary'",
+        condition = "input.tabs_logistic == 'Model Summary'",
         uiOutput("ui_logit_rvar"),
         uiOutput("ui_logit_lev"),
         uiOutput("ui_logit_evar"),
@@ -364,7 +364,7 @@ output$ui_logistic <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Predict'",
+        condition = "input.tabs_logistic == 'Predictions'",
         selectInput(
           "logit_predict",
           label = "Prediction input type:", logit_predict,
@@ -406,7 +406,7 @@ output$ui_logistic <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Plot'",
+        condition = "input.tabs_logistic == 'Model Performance Plots'",
         selectInput(
           "logit_plots", "Plots:",
           choices = logit_plots,
@@ -437,9 +437,9 @@ output$ui_logistic <- renderUI({
       ),
       # Using && to check that input.logit_sum_check is not null (must be &&)
       conditionalPanel(
-        condition = "(input.tabs_logistic == 'Summary' && input.logit_sum_check != undefined && (input.logit_sum_check.indexOf('confint') >= 0 || input.logit_sum_check.indexOf('odds') >= 0)) ||
-                     (input.tabs_logistic == 'Predict' && input.logit_predict != 'none') ||
-                     (input.tabs_logistic == 'Plot' && input.logit_plots == 'coef')",
+        condition = "(input.tabs_logistic == 'Model Summary' && input.logit_sum_check != undefined && (input.logit_sum_check.indexOf('confint') >= 0 || input.logit_sum_check.indexOf('odds') >= 0)) ||
+                     (input.tabs_logistic == 'Predictions' && input.logit_predict != 'none') ||
+                     (input.tabs_logistic == 'Model Performance Plots' && input.logit_plots == 'coef')",
         sliderInput(
           "logit_conf_lev", "Confidence level:",
           min = 0.80,
@@ -448,7 +448,7 @@ output$ui_logistic <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_logistic == 'Summary'",
+        condition = "input.tabs_logistic == 'Model Summary'",
         tags$table(
           # tags$td(textInput("logit_store_res_name", "Store residuals:", state_init("logit_store_res_name", "residuals_logit"))),
           tags$td(uiOutput("ui_logit_store_res_name")),
@@ -470,11 +470,11 @@ logit_plot <- reactive({
   if (is.empty(input$logit_plots, "none")) {
     return()
   }
-
+  
   plot_height <- 500
   plot_width <- 650
   nr_vars <- length(input$logit_evar) + 1
-
+  
   if (input$logit_plots == "dist") {
     plot_height <- (plot_height / 2) * ceiling(nr_vars / 2)
   } else if (input$logit_plots == "fit") {
@@ -527,17 +527,17 @@ output$logistic <- renderUI({
     height_fun = "logit_plot_height",
     width_fun = "logit_plot_width"
   )
-
+  
   ## two separate tabs
   logit_output_panels <- tabsetPanel(
     id = "tabs_logistic",
     tabPanel(
-      "Summary",
+      "Model Summary",
       download_link("dl_logit_coef"), br(),
       verbatimTextOutput("summary_logistic")
     ),
     tabPanel(
-      "Predict",
+      "Predictions",
       conditionalPanel(
         "input.logit_pred_plot == true",
         download_link("dlp_logit_pred"),
@@ -547,12 +547,12 @@ output$logistic <- renderUI({
       verbatimTextOutput("predict_logistic")
     ),
     tabPanel(
-      "Plot",
+      "Model Performance Plots",
       download_link("dlp_logistic"),
       plotOutput("plot_logistic", width = "100%", height = "100%")
     )
   )
-
+  
   stat_tab_panel(
     menu = "Model > Estimate",
     tool = "Logistic regression (GLM)",
@@ -609,7 +609,7 @@ logit_available <- reactive({
   if (input$logit_predict == "cmd" && is.empty(input$logit_pred_cmd)) {
     return("** Enter prediction commands **")
   }
-
+  
   withProgress(message = "Generating predictions", value = 1, {
     lgi <- logit_pred_inputs()
     lgi$object <- .logistic()
@@ -631,7 +631,7 @@ logit_available <- reactive({
     available(input$logit_xvar),
     !is.empty(input$logit_predict, "none")
   )
-
+  
   withProgress(message = "Generating prediction plot", value = 1, {
     do.call(plot, c(list(x = .predict_logistic()), logit_pred_plot_inputs()))
   })
@@ -669,10 +669,10 @@ check_for_pdp_pred_plots <- function(mod_type) {
   } else if (logit_available() != "available") {
     return(logit_available())
   }
-
+  
   if (input$logit_plots %in% c("correlations", "scatter")) req(input$logit_nrobs)
   check_for_pdp_pred_plots("logit")
-
+  
   if (input$logit_plots == "correlations") {
     capture_plot(do.call(plot, c(list(x = .logistic()), logit_plot_inputs())))
   } else {
@@ -694,7 +694,7 @@ logistic_report <- function() {
     outputs <- c(outputs, "plot")
     figs <- TRUE
   }
-
+  
   if (!is.empty(input$logit_store_res_name)) {
     fixed <- fix_names(input$logit_store_res_name)
     updateTextInput(session, "logit_store_res_name", value = fixed)
@@ -702,26 +702,26 @@ logistic_report <- function() {
   } else {
     xcmd <- ""
   }
-
+  
   if (!is.empty(input$logit_predict, "none") &&
-    (!is.empty(input$logit_pred_data) || !is.empty(input$logit_pred_cmd))) {
+      (!is.empty(input$logit_pred_data) || !is.empty(input$logit_pred_cmd))) {
     pred_args <- clean_args(logit_pred_inputs(), logit_pred_args[-1])
-
+    
     if (!is.empty(pred_args$pred_cmd)) {
       pred_args$pred_cmd <- strsplit(pred_args$pred_cmd, ";\\s*")[[1]]
     } else {
       pred_args$pred_cmd <- NULL
     }
-
+    
     if (!is.empty(pred_args$pred_data)) {
       pred_args$pred_data <- as.symbol(pred_args$pred_data)
     } else {
       pred_args$pred_data <- NULL
     }
-
+    
     inp_out[[2 + figs]] <- pred_args
     outputs <- c(outputs, "pred <- predict")
-
+    
     xcmd <- paste0(xcmd, "print(pred, n = 10)")
     if (input$logit_predict %in% c("data", "datacmd")) {
       fixed <- unlist(strsplit(input$logit_store_pred_name, "(\\s*,\\s*|\\s*;\\s*)")) %>%
@@ -733,7 +733,7 @@ logistic_report <- function() {
       )
     }
     # xcmd <- paste0(xcmd, "\n# write.csv(pred, file = \"~/logit_predictions.csv\", row.names = FALSE)")
-
+    
     if (input$logit_pred_plot && !is.empty(input$logit_xvar)) {
       inp_out[[3 + figs]] <- clean_args(logit_pred_plot_inputs(), logit_pred_plot_args[-1])
       inp_out[[3 + figs]]$result <- "pred"
@@ -741,7 +741,7 @@ logistic_report <- function() {
       figs <- TRUE
     }
   }
-
+  
   update_report(
     inp_main = clean_args(logit_inputs(), logit_args),
     fun_name = "logistic",
