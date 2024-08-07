@@ -1,4 +1,3 @@
-
 rf_plots <- c(
   "None" = "none",
   "Permutation Importance" = "vip",
@@ -236,14 +235,14 @@ output$ui_rf <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_rf == 'Summary'",
+      condition = "input.tabs_rf == 'Model Summary'",
       wellPanel(
         actionButton("rf_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_rf == 'Summary'",
+        condition = "input.tabs_rf == 'Model Summary'",
         radioButtons(
           "rf_type",
           label = NULL, c("classification", "regression"),
@@ -284,7 +283,7 @@ output$ui_rf <- renderUI({
         numericInput("rf_seed", label = HTML("<b>Seed:</b>"), value = state_init("rf_seed", 1234))
       ),
       conditionalPanel(
-        condition = "input.tabs_rf == 'Predict'",
+        condition = "input.tabs_rf == 'Predictions'",
         selectInput(
           "rf_predict",
           label = "Prediction input type:", reg_predict,
@@ -326,7 +325,7 @@ output$ui_rf <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_rf == 'Plot'",
+        condition = "input.tabs_rf == 'Model Performance Plots'",
         uiOutput("ui_rf_plots"),
         conditionalPanel(
           condition = "input.rf_plots == 'dashboard'",
@@ -343,7 +342,7 @@ output$ui_rf <- renderUI({
         # )
       ),
       # conditionalPanel(
-      #   condition = "input.tabs_rf == 'Summary'",
+      #   condition = "input.tabs_rf == 'Model Summary'",
       #   tags$table(
       #     tags$td(uiOutput("ui_rf_store_res_name")),
       #     tags$td(actionButton("rf_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
@@ -421,11 +420,11 @@ output$rf <- renderUI({
   rf_output_panels <- tabsetPanel(
     id = "tabs_rf",
     tabPanel(
-      "Summary",
+      "Model Summary",
       verbatimTextOutput("summary_rf")
     ),
     tabPanel(
-      "Predict",
+      "Predictions",
       conditionalPanel(
         "input.rf_pred_plot == true",
         download_link("dlp_rf_pred"),
@@ -435,7 +434,7 @@ output$rf <- renderUI({
       verbatimTextOutput("predict_rf")
     ),
     tabPanel(
-      "Plot",
+      "Model Performance Plots",
       download_link("dlp_rf"),
       plotOutput("plot_rf", width = "100%", height = "100%")
     )
@@ -739,5 +738,4 @@ observeEvent(input$modal_rf_screenshot, {
   rf_report()
   removeModal() ## remove shiny modal after save
 })
-
 
