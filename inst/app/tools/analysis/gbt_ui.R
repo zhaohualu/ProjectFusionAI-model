@@ -1,4 +1,4 @@
-rf_plots <- c(
+gbt_plots <- c(
   "None" = "none",
   "Permutation Importance" = "vip",
   "Prediction plots" = "pred_plot",
@@ -7,138 +7,144 @@ rf_plots <- c(
 )
 
 ## list of function arguments
-rf_args <- as.list(formals(rforest))
+gbt_args <- as.list(formals(gbt))
 
 ## list of function inputs selected by user
-rf_inputs <- reactive({
+gbt_inputs <- reactive({
   ## loop needed because reactive values don't allow single bracket indexing
-  rf_args$data_filter <- if (input$show_filter) input$data_filter else ""
-  rf_args$arr <- if (input$show_filter) input$data_arrange else ""
-  rf_args$rows <- if (input$show_filter) input$data_rows else ""
-  rf_args$dataset <- input$dataset
-  for (i in r_drop(names(rf_args))) {
-    rf_args[[i]] <- input[[paste0("rf_", i)]]
+  gbt_args$data_filter <- if (input$show_filter) input$data_filter else ""
+  gbt_args$arr <- if (input$show_filter) input$data_arrange else ""
+  gbt_args$rows <- if (input$show_filter) input$data_rows else ""
+  gbt_args$dataset <- input$dataset
+  for (i in r_drop(names(gbt_args))) {
+    gbt_args[[i]] <- input[[paste0("gbt_", i)]]
   }
-
-  # Parse the comma-separated values for hyperparameters
-  rf_args$mtry <- as.numeric(unlist(strsplit(input$rf_mtry, ",")))
-  rf_args$num.trees <- as.numeric(unlist(strsplit(input$rf_num_trees, ",")))
-  rf_args$min.node.size <- as.numeric(unlist(strsplit(input$rf_min_node_size, ",")))
-  rf_args$sample.fraction <- as.numeric(unlist(strsplit(input$rf_sample_fraction, ",")))
-  rf_args$num.threads <- as.numeric(unlist(strsplit(input$rf_num_threads, ",")))
-
-  rf_args
+  gbt_args
 })
 
-rf_pred_args <- as.list(if (exists("predict.rforest")) {
-  formals(predict.rforest)
+gbt_plot_args <- as.list(if (exists("plot.gbt")) {
+  formals(plot.gbt)
 } else {
-  formals(radiant.model:::predict.rforest)
+  formals(radiant.model:::plot.gbt)
+})
+
+## list of function inputs selected by user
+gbt_plot_inputs <- reactive({
+  ## loop needed because reactive values don't allow single bracket indexing
+  for (i in names(gbt_plot_args)) {
+    gbt_plot_args[[i]] <- input[[paste0("gbt_", i)]]
+  }
+  gbt_plot_args
+})
+
+gbt_pred_args <- as.list(if (exists("predict.gbt")) {
+  formals(predict.gbt)
+} else {
+  formals(radiant.model:::predict.gbt)
 })
 
 # list of function inputs selected by user
-rf_pred_inputs <- reactive({
+gbt_pred_inputs <- reactive({
   # loop needed because reactive values don't allow single bracket indexing
-  for (i in names(rf_pred_args)) {
-    rf_pred_args[[i]] <- input[[paste0("rf_", i)]]
+  for (i in names(gbt_pred_args)) {
+    gbt_pred_args[[i]] <- input[[paste0("gbt_", i)]]
   }
 
-  rf_pred_args$pred_cmd <- rf_pred_args$pred_data <- ""
-  if (input$rf_predict == "cmd") {
-    rf_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$rf_pred_cmd) %>%
+  gbt_pred_args$pred_cmd <- gbt_pred_args$pred_data <- ""
+  if (input$gbt_predict == "cmd") {
+    gbt_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_pred_cmd) %>%
       gsub(";\\s+", ";", .) %>%
       gsub("\"", "\'", .)
-  } else if (input$rf_predict == "data") {
-    rf_pred_args$pred_data <- input$rf_pred_data
-  } else if (input$rf_predict == "datacmd") {
-    rf_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$rf_pred_cmd) %>%
+  } else if (input$gbt_predict == "data") {
+    gbt_pred_args$pred_data <- input$gbt_pred_data
+  } else if (input$gbt_predict == "datacmd") {
+    gbt_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_pred_cmd) %>%
       gsub(";\\s+", ";", .) %>%
       gsub("\"", "\'", .)
-    rf_pred_args$pred_data <- input$rf_pred_data
+    gbt_pred_args$pred_data <- input$gbt_pred_data
   }
-  rf_pred_args
+  gbt_pred_args
 })
 
-rf_plot_args <- as.list(if (exists("plot.rforest")) {
-  formals(plot.rforest)
-} else {
-  formals(radiant.model:::plot.rforest)
-})
-
-## list of function inputs selected by user
-rf_plot_inputs <- reactive({
-  ## loop needed because reactive values don't allow single bracket indexing
-  for (i in names(rf_plot_args)) {
-    rf_plot_args[[i]] <- input[[paste0("rf_", i)]]
-  }
-  rf_plot_args
-})
-
-rf_pred_plot_args <- as.list(if (exists("plot.model.predict")) {
+gbt_pred_plot_args <- as.list(if (exists("plot.model.predict")) {
   formals(plot.model.predict)
 } else {
   formals(radiant.model:::plot.model.predict)
 })
 
 # list of function inputs selected by user
-rf_pred_plot_inputs <- reactive({
+gbt_pred_plot_inputs <- reactive({
   # loop needed because reactive values don't allow single bracket indexing
-  for (i in names(rf_pred_plot_args)) {
-    rf_pred_plot_args[[i]] <- input[[paste0("rf_", i)]]
+  for (i in names(gbt_pred_plot_args)) {
+    gbt_pred_plot_args[[i]] <- input[[paste0("gbt_", i)]]
   }
-  rf_pred_plot_args
+  gbt_pred_plot_args
 })
 
-
-output$ui_rf_rvar <- renderUI({
-  req(input$rf_type)
+output$ui_gbt_rvar <- renderUI({
+  req(input$gbt_type)
 
   withProgress(message = "Acquiring variable information", value = 1, {
-    if (input$rf_type == "classification") {
-      isFct <- .get_class() %in% c("factor")
-      # vars <- two_level_vars()
-      vars <- varnames()[isFct]
+    if (input$gbt_type == "classification") {
+      vars <- two_level_vars()
     } else {
       isNum <- .get_class() %in% c("integer", "numeric", "ts")
       vars <- varnames()[isNum]
     }
   })
 
-  init <- if (input$rf_type == "classification") {
-    if (is.empty(input$logit_rvar)) isolate(input$rf_rvar) else input$logit_rvar
+  init <- if (input$gbt_type == "classification") {
+    if (is.empty(input$logit_rvar)) isolate(input$gbt_rvar) else input$logit_rvar
   } else {
-    if (is.empty(input$reg_rvar)) isolate(input$rf_rvar) else input$reg_rvar
+    if (is.empty(input$reg_rvar)) isolate(input$gbt_rvar) else input$reg_rvar
   }
 
   selectInput(
-    inputId = "rf_rvar",
-    label = HTML("<b>Response variable:</b>"),
+    inputId = "gbt_rvar",
+    label = "Response variable:",
     choices = vars,
-    selected = state_single("rf_rvar", vars, init),
+    selected = state_single("gbt_rvar", vars, init),
     multiple = FALSE
   )
 })
 
-output$ui_rf_evar <- renderUI({
-  if (not_available(input$rf_rvar)) {
+output$ui_gbt_lev <- renderUI({
+  req(input$gbt_type == "classification")
+  req(available(input$gbt_rvar))
+  levs <- .get_data()[[input$gbt_rvar]] %>%
+    as_factor() %>%
+    levels()
+
+  init <- if (is.empty(input$logit_lev)) isolate(input$gbt_lev) else input$logit_lev
+  selectInput(
+    inputId = "gbt_lev", label = "Choose first level:",
+    choices = levs,
+    selected = state_init("gbt_lev", init)
+  )
+})
+
+output$ui_gbt_evar <- renderUI({
+  if (not_available(input$gbt_rvar)) {
     return()
   }
   vars <- varnames()
   if (length(vars) > 0) {
-    vars <- vars[-which(vars == input$rf_rvar)]
+    vars <- vars[-which(vars == input$gbt_rvar)]
   }
 
-  init <- if (input$rf_type == "classification") {
-    if (is.empty(input$logit_evar)) isolate(input$rf_evar) else input$logit_evar
+  init <- if (input$gbt_type == "classification") {
+    # input$logit_evar
+    if (is.empty(input$logit_evar)) isolate(input$gbt_evar) else input$logit_evar
   } else {
-    if (is.empty(input$reg_evar)) isolate(input$rf_evar) else input$reg_evar
+    # input$reg_evar
+    if (is.empty(input$reg_evar)) isolate(input$gbt_evar) else input$reg_evar
   }
 
   selectInput(
-    inputId = "rf_evar",
-    label = HTML("<b>Explanatory variables:</b>"),
+    inputId = "gbt_evar",
+    label = "Explanatory variables:",
     choices = vars,
-    selected = state_multiple("rf_evar", vars, init),
+    selected = state_multiple("gbt_evar", vars, init),
     multiple = TRUE,
     size = min(10, length(vars)),
     selectize = FALSE
@@ -146,238 +152,259 @@ output$ui_rf_evar <- renderUI({
 })
 
 # function calls generate UI elements
-output_incl("rf")
-output_incl_int("rf")
+output_incl("gbt")
+output_incl_int("gbt")
 
-output$ui_rf_wts <- renderUI({
+output$ui_gbt_wts <- renderUI({
   isNum <- .get_class() %in% c("integer", "numeric", "ts")
   vars <- varnames()[isNum]
-  if (length(vars) > 0 && any(vars %in% input$rf_evar)) {
-    vars <- base::setdiff(vars, input$rf_evar)
+  if (length(vars) > 0 && any(vars %in% input$gbt_evar)) {
+    vars <- base::setdiff(vars, input$gbt_evar)
     names(vars) <- varnames() %>%
-      {
-        .[match(vars, .)]
-      } %>%
+      (function(x) x[match(vars, x)]) %>%
       names()
   }
   vars <- c("None", vars)
 
   selectInput(
-    inputId = "rf_wts", label = HTML("<b>Weights:</b> Select based on how much you want to adjust the influence of individual variables on the construction of the trees within the forest."), choices = vars,
-    selected = state_single("rf_wts", vars),
+    inputId = "gbt_wts", label = "Weights:", choices = vars,
+    selected = state_single("gbt_wts", vars),
     multiple = FALSE
   )
 })
 
-output$ui_rf_store_pred_name <- renderUI({
-  init <- state_init("rf_store_pred_name", "pred_rf")
+output$ui_gbt_store_pred_name <- renderUI({
+  init <- state_init("gbt_store_pred_name", "pred_gbt")
   textInput(
-    "rf_store_pred_name",
+    "gbt_store_pred_name",
     "Store predictions:",
     init
   )
 })
 
-# output$ui_rf_store_res_name <- renderUI({
+# output$ui_gbt_store_res_name <- renderUI({
 #   req(input$dataset)
-#   textInput("rf_store_res_name", "Store residuals:", "", placeholder = "Provide variable name")
+#   textInput("gbt_store_res_name", "Store residuals:", "", placeholder = "Provide variable name")
 # })
 
 ## reset prediction and plot settings when the dataset changes
 observeEvent(input$dataset, {
-  updateSelectInput(session = session, inputId = "rf_predict", selected = "none")
-  updateSelectInput(session = session, inputId = "rf_plots", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_predict", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_plots", selected = "none")
 })
 
 ## reset prediction settings when the model type changes
-observeEvent(input$rf_type, {
-  updateSelectInput(session = session, inputId = "rf_predict", selected = "none")
-  updateSelectInput(session = session, inputId = "rf_plots", selected = "none")
+observeEvent(input$gbt_type, {
+  updateSelectInput(session = session, inputId = "gbt_predict", selected = "none")
+  updateSelectInput(session = session, inputId = "gbt_plots", selected = "none")
 })
 
-output$ui_rf_predict_plot <- renderUI({
-  req(input$rf_rvar, input$rf_type)
-  if (input$rf_type == "classification") {
-    var_colors <- ".class" %>% set_names(input$rf_rvar)
-    predict_plot_controls("rf", vars_color = var_colors, init_color = ".class")
-  } else {
-    predict_plot_controls("rf")
-  }
+output$ui_gbt_predict_plot <- renderUI({
+  predict_plot_controls("gbt")
 })
 
-output$ui_rf_plots <- renderUI({
-  req(input$rf_type)
-  if (input$rf_type != "regression") {
-    rf_plots <- head(rf_plots, -1)
+output$ui_gbt_plots <- renderUI({
+  req(input$gbt_type)
+  if (input$gbt_type != "regression") {
+    gbt_plots <- head(gbt_plots, -1)
   }
   selectInput(
-    "rf_plots", "Plots:",
-    choices = rf_plots,
-    selected = state_single("rf_plots", rf_plots)
+    "gbt_plots", "Plots:",
+    choices = gbt_plots,
+    selected = state_single("gbt_plots", gbt_plots)
   )
 })
 
-output$ui_rf_nrobs <- renderUI({
+output$ui_gbt_nrobs <- renderUI({
   nrobs <- nrow(.get_data())
   choices <- c("1,000" = 1000, "5,000" = 5000, "10,000" = 10000, "All" = -1) %>%
     .[. < nrobs]
   selectInput(
-    "rf_nrobs", "Number of data points plotted:",
+    "gbt_nrobs", "Number of data points plotted:",
     choices = choices,
-    selected = state_single("rf_nrobs", choices, 1000)
+    selected = state_single("gbt_nrobs", choices, 1000)
   )
 })
 
 ## add a spinning refresh icon if the model needs to be (re)estimated
-run_refresh(rf_args, "rf", tabs = "tabs_rf", label = "Estimate model", relabel = "Re-estimate model")
+run_refresh(gbt_args, "gbt", tabs = "tabs_gbt", label = "Estimate model", relabel = "Re-estimate model")
 
-output$ui_rf <- renderUI({
+output$ui_gbt <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_rf == 'Model Summary'",
+      condition = "input.tabs_gbt == 'Summary'",
       wellPanel(
-        actionButton("rf_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
+        actionButton("gbt_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_rf == 'Model Summary'",
+        condition = "input.tabs_gbt == 'Summary'",
         radioButtons(
-          "rf_type",
+          "gbt_type",
           label = NULL, c("classification", "regression"),
-          selected = state_init("rf_type", "classification"),
+          selected = state_init("gbt_type", "classification"),
           inline = TRUE
         ),
-        uiOutput("ui_rf_rvar"),
-        uiOutput("ui_rf_lev"),
-        uiOutput("ui_rf_evar"),
-        uiOutput("ui_rf_wts"),
+        uiOutput("ui_gbt_rvar"),
+        uiOutput("ui_gbt_lev"),
+        uiOutput("ui_gbt_evar"),
+        uiOutput("ui_gbt_wts"),
         with(tags, table(
           tr(
-            td(textInput(
-              "rf_mtry",
-              label = HTML("<b>mtry:</b> (comma-separated values)"), value = state_init("rf_mtry", "1")
+            td(numericInput(
+              "gbt_max_depth",
+              label = "Max depth:", min = 1, max = 20,
+              value = state_init("gbt_max_depth", 6)
             ), width = "50%"),
-            td(textInput(
-              "rf_num_trees",
-              label = HTML("<b>Number of trees:</b> (comma-separated values)"), value = state_init("rf_num_trees", "100")
+            td(numericInput(
+              "gbt_learning_rate",
+              label = "Learning rate:", min = 0, max = 1, step = 0.1,
+              value = state_init("gbt_learning_rate", 0.3)
             ), width = "50%")
           ),
           width = "100%"
         )),
         with(tags, table(
           tr(
-            td(textInput(
-              "rf_min_node_size",
-              label = HTML("<b>Min node size:</b> (comma-separated values)"), value = state_init("rf_min_node_size", "1")
+            td(numericInput(
+              "gbt_min_split_loss",
+              label = "Min split loss:", min = 0.00001, max = 1000,
+              step = 0.01, value = state_init("gbt_min_split_loss", 0)
             ), width = "50%"),
-            td(textInput(
-              "rf_sample_fraction",
-              label = HTML("<b>Sample fraction:</b> (comma-separated values)"), value = state_init("rf_sample_fraction", "1")
+            td(numericInput(
+              "gbt_min_child_weight",
+              label = "Min child weight:", min = 1, max = 100,
+              step = 1, value = state_init("gbt_min_child_weight", 1)
             ), width = "50%")
           ),
           width = "100%"
         )),
-        textInput("rf_num_threads", label = HTML("<b>Number of threads:</b> (comma-separated values)"), value = state_init("rf_num_threads", "12")),
-        numericInput("rf_seed", label = HTML("<b>Seed:</b>"), value = state_init("rf_seed", 1234))
+        with(tags, table(
+          tr(
+            td(numericInput(
+              "gbt_subsample",
+              label = "Sub-sample:", min = 0.1, max = 1,
+              value = state_init("gbt_subsample", 1)
+            ), width = "50%"),
+            td(numericInput(
+              "gbt_nrounds",
+              label = "# rounds:",
+              value = state_init("gbt_nrounds", 100)
+            ), width = "50%")
+          ),
+          width = "100%"
+        )),
+        with(tags, table(
+          tr(
+            td(numericInput(
+              "gbt_early_stopping_rounds",
+              label = "Early stopping:", min = 1, max = 10,
+              step = 1, value = state_init("gbt_early_stopping_rounds", 3)
+            ), width = "50%"),
+            td(numericInput(
+              "gbt_seed",
+              label = "Seed:",
+              value = state_init("gbt_seed", 1234)
+            ), width = "50%")
+          ),
+          width = "100%"
+        ))
       ),
       conditionalPanel(
-        condition = "input.tabs_rf == 'Predictions'",
+        condition = "input.tabs_gbt == 'Predict'",
         selectInput(
-          "rf_predict",
+          "gbt_predict",
           label = "Prediction input type:", reg_predict,
-          selected = state_single("rf_predict", reg_predict, "none")
+          selected = state_single("gbt_predict", reg_predict, "none")
         ),
         conditionalPanel(
-          "input.rf_predict == 'data' | input.rf_predict == 'datacmd'",
+          "input.gbt_predict == 'data' | input.gbt_predict == 'datacmd'",
           selectizeInput(
-            inputId = "rf_pred_data", label = "Prediction data:",
+            inputId = "gbt_pred_data", label = "Prediction data:",
             choices = c("None" = "", r_info[["datasetlist"]]),
-            selected = state_single("rf_pred_data", c("None" = "", r_info[["datasetlist"]])),
+            selected = state_single("gbt_pred_data", c("None" = "", r_info[["datasetlist"]])),
             multiple = FALSE
           )
         ),
         conditionalPanel(
-          "input.rf_predict == 'cmd' | input.rf_predict == 'datacmd'",
+          "input.gbt_predict == 'cmd' | input.gbt_predict == 'datacmd'",
           returnTextAreaInput(
-            "rf_pred_cmd", "Prediction command:",
-            value = state_init("rf_pred_cmd", ""),
+            "gbt_pred_cmd", "Prediction command:",
+            value = state_init("gbt_pred_cmd", ""),
             rows = 3,
             placeholder = "Type a formula to set values for model variables (e.g., carat = 1; cut = 'Ideal') and press return"
           )
         ),
         conditionalPanel(
-          condition = "input.rf_predict != 'none'",
-          checkboxInput("rf_pred_plot", "Plot predictions", state_init("rf_pred_plot", FALSE)),
+          condition = "input.gbt_predict != 'none'",
+          checkboxInput("gbt_pred_plot", "Plot predictions", state_init("gbt_pred_plot", FALSE)),
           conditionalPanel(
-            "input.rf_pred_plot == true",
-            uiOutput("ui_rf_predict_plot")
+            "input.gbt_pred_plot == true",
+            uiOutput("ui_gbt_predict_plot")
           )
         ),
         ## only show if full data is used for prediction
         conditionalPanel(
-          "input.rf_predict == 'data' | input.rf_predict == 'datacmd'",
+          "input.gbt_predict == 'data' | input.gbt_predict == 'datacmd'",
           tags$table(
-            tags$td(uiOutput("ui_rf_store_pred_name")),
-            tags$td(actionButton("rf_store_pred", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
+            tags$td(uiOutput("ui_gbt_store_pred_name")),
+            tags$td(actionButton("gbt_store_pred", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
           )
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_rf == 'Model Performance Plots'",
-        uiOutput("ui_rf_plots"),
+        condition = "input.tabs_gbt == 'Plot'",
+        uiOutput("ui_gbt_plots"),
         conditionalPanel(
-          condition = "input.rf_plots == 'dashboard'",
-          uiOutput("ui_rf_nrobs")
+          condition = "input.gbt_plots == 'dashboard'",
+          uiOutput("ui_gbt_nrobs")
         ),
         conditionalPanel(
-          condition = "input.rf_plots == 'pdp' | input.rf_plots == 'pred_plot'",
-          uiOutput("ui_rf_incl"),
-          uiOutput("ui_rf_incl_int")
+          condition = "input.gbt_plots == 'pdp' | input.gbt_plots == 'pred_plot'",
+          uiOutput("ui_gbt_incl"),
+          uiOutput("ui_gbt_incl_int")
         )
-        # conditionalPanel(
-        #   condition = "input.rf_plots == 'pdp'",
-        #   checkboxInput("rf_qtiles", "Show quintiles", state_init("rf_qtiles", FALSE))
-        # )
       ),
       # conditionalPanel(
-      #   condition = "input.tabs_rf == 'Model Summary'",
+      #   condition = "input.tabs_gbt == 'Summary'",
       #   tags$table(
-      #     tags$td(uiOutput("ui_rf_store_res_name")),
-      #     tags$td(actionButton("rf_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
+      #     tags$td(uiOutput("ui_gbt_store_res_name")),
+      #     tags$td(actionButton("gbt_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
       #   )
       # )
     ),
     help_and_report(
-      modal_title = "Random Forest",
-      fun_name = "rf",
-      help_file = inclMD(file.path(getOption("radiant.path.model"), "app/tools/help/rforest.md"))
+      modal_title = "Gradient Boosted Trees",
+      fun_name = "gbt",
+      help_file = inclMD(file.path(getOption("radiant.path.model"), "app/tools/help/gbt.md"))
     )
   )
 })
 
-rf_plot <- reactive({
-  if (rf_available() != "available") {
+gbt_plot <- reactive({
+  # req(input$gbt_plots)
+  if (gbt_available() != "available") {
     return()
   }
-  if (is.empty(input$rf_plots, "none")) {
+  if (is.empty(input$gbt_plots, "none")) {
     return()
   }
-  res <- .rf()
+  res <- .gbt()
   if (is.character(res)) {
     return()
   }
   nr_vars <- length(res$evar)
   plot_height <- 500
   plot_width <- 650
-  if ("dashboard" %in% input$rf_plots) {
+  if ("dashboard" %in% input$gbt_plots) {
     plot_height <- 750
-  } else if (input$rf_plots %in% c("pdp", "pred_plot")) {
-    nr_vars <- length(input$rf_incl) + length(input$rf_incl_int)
+  } else if (input$gbt_plots %in% c("pdp", "pred_plot")) {
+    nr_vars <- length(input$gbt_incl) + length(input$gbt_incl_int)
     plot_height <- max(250, ceiling(nr_vars / 2) * 250)
-    if (length(input$rf_incl_int) > 0) {
-      plot_width <- plot_width + min(2, length(input$rf_incl_int)) * 90
+    if (length(input$gbt_incl_int) > 0) {
+      plot_width <- plot_width + min(2, length(input$gbt_incl_int)) * 90
     }
   } else if ("vimp" %in% input$rf_plots) {
     plot_height <- max(500, nr_vars * 35)
@@ -388,78 +415,78 @@ rf_plot <- reactive({
   list(plot_width = plot_width, plot_height = plot_height)
 })
 
-rf_plot_width <- function() {
-  rf_plot() %>%
+gbt_plot_width <- function() {
+  gbt_plot() %>%
     (function(x) if (is.list(x)) x$plot_width else 650)
 }
 
-rf_plot_height <- function() {
-  rf_plot() %>%
+gbt_plot_height <- function() {
+  gbt_plot() %>%
     (function(x) if (is.list(x)) x$plot_height else 500)
 }
 
-rf_pred_plot_height <- function() {
-  if (input$rf_pred_plot) 500 else 1
+gbt_pred_plot_height <- function() {
+  if (input$gbt_pred_plot) 500 else 1
 }
 
 ## output is called from the main radiant ui.R
-output$rf <- renderUI({
-  register_print_output("summary_rf", ".summary_rf")
-  register_print_output("predict_rf", ".predict_print_rf")
+output$gbt <- renderUI({
+  register_print_output("summary_gbt", ".summary_gbt")
+  register_print_output("predict_gbt", ".predict_print_gbt")
   register_plot_output(
-    "predict_plot_rf", ".predict_plot_rf",
-    height_fun = "rf_pred_plot_height"
+    "predict_plot_gbt", ".predict_plot_gbt",
+    height_fun = "gbt_pred_plot_height"
   )
   register_plot_output(
-    "plot_rf", ".plot_rf",
-    height_fun = "rf_plot_height",
-    width_fun = "rf_plot_width"
+    "plot_gbt", ".plot_gbt",
+    height_fun = "gbt_plot_height",
+    width_fun = "gbt_plot_width"
   )
 
   ## three separate tabs
-  rf_output_panels <- tabsetPanel(
-    id = "tabs_rf",
+  gbt_output_panels <- tabsetPanel(
+    id = "tabs_gbt",
     tabPanel(
-      "Model Summary",
-      verbatimTextOutput("summary_rf")
+      "Summary",
+      verbatimTextOutput("summary_gbt")
     ),
     tabPanel(
-      "Predictions",
+      "Predict",
       conditionalPanel(
-        "input.rf_pred_plot == true",
-        download_link("dlp_rf_pred"),
-        plotOutput("predict_plot_rf", width = "100%", height = "100%")
+        "input.gbt_pred_plot == true",
+        download_link("dlp_gbt_pred"),
+        plotOutput("predict_plot_gbt", width = "100%", height = "100%")
       ),
-      download_link("dl_rf_pred"), br(),
-      verbatimTextOutput("predict_rf")
+      download_link("dl_gbt_pred"), br(),
+      verbatimTextOutput("predict_gbt")
     ),
     tabPanel(
-      "Model Performance Plots",
-      download_link("dlp_rf"),
-      plotOutput("plot_rf", width = "100%", height = "100%")
+      "Plot",
+      download_link("dlp_gbt"),
+      plotOutput("plot_gbt", width = "100%", height = "100%")
     )
   )
 
   stat_tab_panel(
-    menu = "Model > Estimate",
-    tool = "Random Forest",
-    tool_ui = "ui_rf",
-    output_panels = rf_output_panels
+    menu = "Model > Trees",
+    tool = "Gradient Boosted Trees",
+    tool_ui = "ui_gbt",
+    output_panels = gbt_output_panels
   )
 })
 
-rf_available <- reactive({
-  req(input$rf_type)
-  if (not_available(input$rf_rvar)) {
-    if (input$rf_type == "classification") {
+gbt_available <- reactive({
+  req(input$gbt_type)
+  if (not_available(input$gbt_rvar)) {
+    if (input$gbt_type == "classification") {
       "This analysis requires a response variable with two levels and one\nor more explanatory variables. If these variables are not available\nplease select another dataset.\n\n" %>%
         suggest_data("titanic")
     } else {
       "This analysis requires a response variable of type integer\nor numeric and one or more explanatory variables.\nIf these variables are not available please select another dataset.\n\n" %>%
         suggest_data("diamonds")
     }
-  } else if (not_available(input$rf_evar)) {
-    if (input$rf_type == "classification") {
+  } else if (not_available(input$gbt_evar)) {
+    if (input$gbt_type == "classification") {
       "Please select one or more explanatory variables.\n\n" %>%
         suggest_data("titanic")
     } else {
@@ -471,176 +498,164 @@ rf_available <- reactive({
   }
 })
 
-.rf <- eventReactive(input$rf_run, {
-  rfi <- rf_inputs()
-  rfi$envir <- r_data
-
-  if (is.empty(rfi$mtry)) rfi$mtry <- 1
-  nr_evar <- length(rfi$evar)
-  if (rfi$mtry > nr_evar) {
-    rfi$mtry <- nr_evar
-    updateTextInput(session, "rf_mtry", value = nr_evar)
-  } else if (rfi$mtry < 0) {
-    rfi$mtry <- 1
-    updateTextInput(session, "rf_mtry", value = 1)
-  }
-
-  if (is.empty(rfi$num.trees)) rfi$num.trees <- 100
-  if (is.empty(rfi$min.node.size)) rfi$min.node.size <- 1
-  if (is.empty(rfi$sample.fraction)) rfi$sample.fraction <- 1
+.gbt <- eventReactive(input$gbt_run, {
+  gbti <- gbt_inputs()
+  gbti$envir <- r_data
+  if (is.empty(gbti$max_depth)) gbti$max_depth <- 6
+  if (is.empty(gbti$learning_rate)) gbti$learning_rate <- 0.3
+  if (is.empty(gbti$min_split_loss)) gbti$min_split_loss <- 0.01
+  if (is.empty(gbti$min_child_weight)) gbti$min_child_weight <- 1
+  if (is.empty(gbti$subsample)) gbti$subsample <- 1
+  if (is.empty(gbti$nrounds)) gbti$nrounds <- 100
+  if (is.empty(gbti$early_stopping_rounds)) gbti["early_stopping_rounds"] <- list(NULL)
 
   withProgress(
-    message = "Estimating random forest", value = 1,
-    do.call(rforest, rfi)
+    message = "Estimating model", value = 1,
+    do.call(gbt, gbti)
   )
 })
 
-.summary_rf <- reactive({
-  if (not_pressed(input$rf_run)) {
+.summary_gbt <- reactive({
+  if (not_pressed(input$gbt_run)) {
     return("** Press the Estimate button to estimate the model **")
   }
-  if (rf_available() != "available") {
-    return(rf_available())
+  if (gbt_available() != "available") {
+    return(gbt_available())
   }
-  summary(.rf())
+  summary(.gbt())
 })
 
-.predict_rf <- reactive({
-  if (not_pressed(input$rf_run)) {
+.predict_gbt <- reactive({
+  if (not_pressed(input$gbt_run)) {
     return("** Press the Estimate button to estimate the model **")
   }
-  if (rf_available() != "available") {
-    return(rf_available())
+  if (gbt_available() != "available") {
+    return(gbt_available())
   }
-  if (is.empty(input$rf_predict, "none")) {
+  if (is.empty(input$gbt_predict, "none")) {
     return("** Select prediction input **")
-  } else if ((input$rf_predict == "data" || input$rf_predict == "datacmd") && is.empty(input$rf_pred_data)) {
+  }
+
+  if ((input$gbt_predict == "data" || input$gbt_predict == "datacmd") && is.empty(input$gbt_pred_data)) {
     return("** Select data for prediction **")
-  } else if (input$rf_predict == "cmd" && is.empty(input$rf_pred_cmd)) {
+  }
+  if (input$gbt_predict == "cmd" && is.empty(input$gbt_pred_cmd)) {
     return("** Enter prediction commands **")
   }
 
   withProgress(message = "Generating predictions", value = 1, {
-    rfi <- rf_pred_inputs()
-    rfi$object <- .rf()
-    rfi$envir <- r_data
-    rfi$OOB <- input$dataset == input$rf_pred_data &&
-      (input$rf_predict == "data" || (input$rf_predict == "datacmd" && is.empty(input$rf_pred_cmd))) &&
-      ((is.empty(input$data_filter) && is.empty(input$data_rows)) || input$show_filter == FALSE) &&
-      pressed(input$rf_run)
-    do.call(predict, rfi)
+    gbti <- gbt_pred_inputs()
+    gbti$object <- .gbt()
+    gbti$envir <- r_data
+    do.call(predict, gbti)
   })
 })
 
-.predict_print_rf <- reactive({
-  .predict_rf() %>%
+.predict_print_gbt <- reactive({
+  .predict_gbt() %>%
     (function(x) if (is.character(x)) cat(x, "\n") else print(x))
 })
 
-.predict_plot_rf <- reactive({
+.predict_plot_gbt <- reactive({
   req(
-    pressed(input$rf_run), input$rf_pred_plot,
-    available(input$rf_xvar),
-    !is.empty(input$rf_predict, "none")
+    pressed(input$gbt_run), input$gbt_pred_plot,
+    available(input$gbt_xvar),
+    !is.empty(input$gbt_predict, "none")
   )
 
   withProgress(message = "Generating prediction plot", value = 1, {
-    do.call(plot, c(list(x = .predict_rf()), rf_pred_plot_inputs()))
+    do.call(plot, c(list(x = .predict_gbt()), gbt_pred_plot_inputs()))
   })
 })
 
-.plot_rf <- reactive({
-  if (not_pressed(input$rf_run)) {
+.plot_gbt <- reactive({
+  if (not_pressed(input$gbt_run)) {
     return("** Press the Estimate button to estimate the model **")
+  } else if (gbt_available() != "available") {
+    return(gbt_available())
+  } else if (is.empty(input$gbt_plots, "none")) {
+    return("Please select a gradient boosted trees plot from the drop-down menu")
   }
-  if (rf_available() != "available") {
-    return(rf_available())
-  }
-  if (is.empty(input$rf_plots, "none")) {
-    return("Please select a random forest plot from the drop-down menu")
-  }
-  pinp <- rf_plot_inputs()
+  # pinp <- list(plots = input$gbt_plots, shiny = TRUE)
+  # if (input$gbt_plots == "dashboard") {
+  #   req(input$gbt_nrobs)
+  #   pinp <- c(pinp, nrobs = as_integer(input$gbt_nrobs))
+  # } else if (input$gbt_plots == "pdp") {
+  #   pinp <- c(pinp)
+  # }
+  pinp <- gbt_plot_inputs()
   pinp$shiny <- TRUE
-  if (input$rf_plots == "dashboard") {
-    req(input$rf_nrobs)
+  if (input$gbt_plots == "dashboard") {
+    req(input$gbt_nrobs)
   }
-  check_for_pdp_pred_plots("rf")
+  check_for_pdp_pred_plots("gbt")
   withProgress(message = "Generating plots", value = 1, {
-    do.call(plot, c(list(x = .rf()), pinp))
+    do.call(plot, c(list(x = .gbt()), pinp))
   })
 })
 
-# observeEvent(input$rf_store_res, {
-#   req(pressed(input$rf_run))
-#   robj <- .rf()
+# observeEvent(input$gbt_store_res, {
+#   req(pressed(input$gbt_run))
+#   robj <- .gbt()
 #   if (!is.list(robj)) return()
-#   fixed <- fix_names(input$rf_store_res_name)
-#   updateTextInput(session, "rf_store_res_name", value = fixed)
+#   fixed <- fix_names(input$gbt_store_res_name)
+#   updateTextInput(session, "gbt_store_res_name", value = fixed)
 #   withProgress(
 #     message = "Storing residuals", value = 1,
 #     r_data[[input$dataset]] <- store(r_data[[input$dataset]], robj, name = fixed)
 #   )
 # })
 
-observeEvent(input$rf_store_pred, {
-  req(!is.empty(input$rf_pred_data), pressed(input$rf_run))
-  pred <- .predict_rf()
+observeEvent(input$gbt_store_pred, {
+  req(!is.empty(input$gbt_pred_data), pressed(input$gbt_run))
+  pred <- .predict_gbt()
   if (is.null(pred)) {
     return()
   }
-  fixed <- unlist(strsplit(input$rf_store_pred_name, "(\\s*,\\s*|\\s*;\\s*)")) %>%
-    fix_names() %>%
-    paste0(collapse = ", ")
-  updateTextInput(session, "rf_store_pred_name", value = fixed)
+  fixed <- fix_names(input$gbt_store_pred_name)
+  updateTextInput(session, "gbt_store_pred_name", value = fixed)
   withProgress(
     message = "Storing predictions", value = 1,
-    r_data[[input$rf_pred_data]] <- store(
-      r_data[[input$rf_pred_data]], pred,
+    r_data[[input$gbt_pred_data]] <- store(
+      r_data[[input$gbt_pred_data]], pred,
       name = fixed
     )
   )
 })
 
-rf_report <- function() {
-  if (is.empty(input$rf_rvar)) {
+gbt_report <- function() {
+  if (is.empty(input$gbt_rvar)) {
     return(invisible())
   }
 
   outputs <- c("summary")
-  inp_out <- list("", "")
+  inp_out <- list(list(prn = TRUE), "")
   figs <- FALSE
 
-  if (!is.empty(input$rf_plots, "none")) {
-    inp <- check_plot_inputs(rf_plot_inputs())
-    inp_out[[2]] <- clean_args(inp, rf_plot_args[-1])
+  if (!is.empty(input$gbt_plots, "none")) {
+    inp <- check_plot_inputs(gbt_plot_inputs())
+    inp_out[[2]] <- clean_args(inp, gbt_plot_args[-1])
     inp_out[[2]]$custom <- FALSE
     outputs <- c(outputs, "plot")
     figs <- TRUE
   }
 
-  # if (!is.empty(input$rf_store_res_name)) {
-  #   fixed <- fix_names(input$rf_store_res_name)
-  #   updateTextInput(session, "rf_store_res_name", value = fixed)
-  #   xcmd <- paste0(input$dataset, " <- store(", input$dataset, ", result, name = \"", fixed, "\")\n")
-  # } else {
-  #   xcmd <- ""
-  # }
-  xcmd <- ""
+  if (!is.empty(input$gbt_store_res_name)) {
+    fixed <- fix_names(input$gbt_store_res_name)
+    updateTextInput(session, "gbt_store_res_name", value = fixed)
+    xcmd <- paste0(input$dataset, " <- store(", input$dataset, ", result, name = \"", fixed, "\")\n")
+  } else {
+    xcmd <- ""
+  }
 
-  if (!is.empty(input$rf_predict, "none") &&
-      (!is.empty(input$rf_pred_data) || !is.empty(input$rf_pred_cmd))) {
-    pred_args <- clean_args(rf_pred_inputs(), rf_pred_args[-1])
+  if (!is.empty(input$gbt_predict, "none") &&
+    (!is.empty(input$gbt_pred_data) || !is.empty(input$gbt_pred_cmd))) {
+    pred_args <- clean_args(gbt_pred_inputs(), gbt_pred_args[-1])
 
     if (!is.empty(pred_args$pred_cmd)) {
       pred_args$pred_cmd <- strsplit(pred_args$pred_cmd, ";\\s*")[[1]]
     } else {
       pred_args$pred_cmd <- NULL
-    }
-
-    if (is.empty(pred_args$pred_cmd) && !is.empty(pred_args$pred_data)) {
-      pred_args$OOB <- input$dataset == pred_args$pred_data &&
-        ((is.empty(input$data_filter) && is.empty(input$data_rows)) || input$show_filter == FALSE) &&
-        pressed(input$rf_run)
     }
 
     if (!is.empty(pred_args$pred_data)) {
@@ -652,89 +667,89 @@ rf_report <- function() {
     inp_out[[2 + figs]] <- pred_args
     outputs <- c(outputs, "pred <- predict")
     xcmd <- paste0(xcmd, "print(pred, n = 10)")
-    if (input$rf_predict %in% c("data", "datacmd")) {
-      fixed <- fix_names(input$rf_store_pred_name)
-      updateTextInput(session, "rf_store_pred_name", value = fixed)
+    if (input$gbt_predict %in% c("data", "datacmd")) {
+      fixed <- fix_names(input$gbt_store_pred_name)
+      updateTextInput(session, "gbt_store_pred_name", value = fixed)
       xcmd <- paste0(
-        xcmd, "\n", input$rf_pred_data, " <- store(",
-        input$rf_pred_data, ", pred, name = \"", fixed, "\")"
+        xcmd, "\n", input$gbt_pred_data, " <- store(",
+        input$gbt_pred_data, ", pred, name = \"", fixed, "\")"
       )
     }
 
-    if (input$rf_pred_plot && !is.empty(input$rf_xvar)) {
-      inp_out[[3 + figs]] <- clean_args(rf_pred_plot_inputs(), rf_pred_plot_args[-1])
+    if (input$gbt_pred_plot && !is.empty(input$gbt_xvar)) {
+      inp_out[[3 + figs]] <- clean_args(gbt_pred_plot_inputs(), gbt_pred_plot_args[-1])
       inp_out[[3 + figs]]$result <- "pred"
       outputs <- c(outputs, "plot")
       figs <- TRUE
     }
   }
 
-  rfi <- rf_inputs()
-  if (input$rf_type == "regression") {
-    rfi$lev <- NULL
+  gbt_inp <- gbt_inputs()
+  if (input$gbt_type == "regression") {
+    gbt_inp$lev <- NULL
   }
 
   update_report(
-    inp_main = clean_args(rfi, rf_args),
-    fun_name = "rforest",
+    inp_main = clean_args(gbt_inp, gbt_args),
+    fun_name = "gbt",
     inp_out = inp_out,
     outputs = outputs,
     figs = figs,
-    fig.width = rf_plot_width(),
-    fig.height = rf_plot_height(),
+    fig.width = gbt_plot_width(),
+    fig.height = gbt_plot_height(),
     xcmd = xcmd
   )
 }
 
-dl_rf_pred <- function(path) {
-  if (pressed(input$rf_run)) {
-    write.csv(.predict_rf(), file = path, row.names = FALSE)
+dl_gbt_pred <- function(path) {
+  if (pressed(input$gbt_run)) {
+    write.csv(.predict_gbt(), file = path, row.names = FALSE)
   } else {
     cat("No output available. Press the Estimate button to generate results", file = path)
   }
 }
 
 download_handler(
-  id = "dl_rf_pred",
-  fun = dl_rf_pred,
-  fn = function() paste0(input$dataset, "_rf_pred"),
+  id = "dl_gbt_pred",
+  fun = dl_gbt_pred,
+  fn = function() paste0(input$dataset, "_gbt_pred"),
   type = "csv",
   caption = "Save predictions"
 )
 
 download_handler(
-  id = "dlp_rf_pred",
+  id = "dlp_gbt_pred",
   fun = download_handler_plot,
-  fn = function() paste0(input$dataset, "_rf_pred"),
+  fn = function() paste0(input$dataset, "_gbt_pred"),
   type = "png",
-  caption = "Save random forest prediction plot",
-  plot = .predict_plot_rf,
+  caption = "Save gradient boosted trees prediction plot",
+  plot = .predict_plot_gbt,
   width = plot_width,
-  height = rf_pred_plot_height
+  height = gbt_pred_plot_height
 )
 
 download_handler(
-  id = "dlp_rf",
+  id = "dlp_gbt",
   fun = download_handler_plot,
-  fn = function() paste0(input$dataset, "_rf"),
+  fn = function() paste0(input$dataset, "_gbt"),
   type = "png",
-  caption = "Save random forest plot",
-  plot = .plot_rf,
-  width = rf_plot_width,
-  height = rf_plot_height
+  caption = "Save gradient boosted trees plot",
+  plot = .plot_gbt,
+  width = gbt_plot_width,
+  height = gbt_plot_height
 )
 
-observeEvent(input$rf_report, {
+observeEvent(input$gbt_report, {
   r_info[["latest_screenshot"]] <- NULL
-  rf_report()
+  gbt_report()
 })
 
-observeEvent(input$rf_screenshot, {
+observeEvent(input$gbt_screenshot, {
   r_info[["latest_screenshot"]] <- NULL
-  radiant_screenshot_modal("modal_rf_screenshot")
+  radiant_screenshot_modal("modal_gbt_screenshot")
 })
 
-observeEvent(input$modal_rf_screenshot, {
-  rf_report()
+observeEvent(input$modal_gbt_screenshot, {
+  gbt_report()
   removeModal() ## remove shiny modal after save
 })
