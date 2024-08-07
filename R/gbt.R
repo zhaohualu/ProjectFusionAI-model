@@ -55,15 +55,15 @@
 #'
 #' @export
 gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
-                max_depth = 6, learning_rate = 0.3, min_split_loss = 0,
-                min_child_weight = 1, subsample = 1,
-                nrounds = 100, early_stopping_rounds = 10,
+                max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
+                min_child_weight = c(1), subsample = c(1),
+                nrounds = c(100), early_stopping_rounds = 10,
                 nthread = 12, wts = "None", seed = NA,
                 data_filter = "", arr = "", rows = NULL,
                 envir = parent.frame(), ...) {
   if (rvar %in% evar) {
     return("Response variable contained in the set of explanatory variables.\nPlease update model specification." %>%
-      add_class("gbt"))
+             add_class("gbt"))
   }
 
   vars <- c(rvar, evar)
@@ -96,7 +96,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     return(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>%
-      add_class("gbt"))
+             add_class("gbt"))
   }
 
   rv <- dataset[[rvar]]
@@ -123,74 +123,104 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
     vars <- evar <- colnames(dataset)[-1]
   }
 
-  gbt_input <- list(
+  param_grid <- expand.grid(
     max_depth = max_depth,
     learning_rate = learning_rate,
     min_split_loss = min_split_loss,
-    nrounds = nrounds,
     min_child_weight = min_child_weight,
     subsample = subsample,
-    early_stopping_rounds = early_stopping_rounds,
-    nthread = nthread
+    nrounds = nrounds
   )
 
-  ## checking for extra args
-  extra_args <- list(...)
-  extra_args_names <- names(extra_args)
-  check_args <- function(arg, default, inp = gbt_input) {
-    if (!arg %in% extra_args_names) inp[[arg]] <- default
-    inp
-  }
+  best_model <- NULL
+  best_metric <- if (type == "regression") Inf else -Inf
+  best_params <- NULL
 
-  if (type == "classification") {
-    gbt_input <- check_args("objective", "binary:logistic")
-    gbt_input <- check_args("eval_metric", "auc")
-    dty <- as.integer(dataset[[rvar]] == lev)
-  } else {
-    gbt_input <- check_args("objective", "reg:squarederror")
-    gbt_input <- check_args("eval_metric", "rmse")
-    dty <- dataset[[rvar]]
-  }
+  for (i in seq_len(nrow(param_grid))) {
+    params <- param_grid[i, ]
+    gbt_input <- list(
+      max_depth = params$max_depth,
+      learning_rate = params$learning_rate,
+      min_split_loss = params$min_split_loss,
+      nrounds = params$nrounds,
+      min_child_weight = params$min_child_weight,
+      subsample = params$subsample,
+      early_stopping_rounds = early_stopping_rounds,
+      nthread = nthread
+    )
 
-  ## adding data
-  dtx <- onehot(dataset[, -1, drop = FALSE])[, -1, drop = FALSE]
-  gbt_input <- c(gbt_input, list(data = dtx, label = dty), ...)
-
-  ## based on https://stackoverflow.com/questions/14324096/setting-seed-locally-not-globally-in-r/14324316#14324316
-  seed <- gsub("[^0-9]", "", seed)
-  if (!is.empty(seed)) {
-    if (exists(".Random.seed")) {
-      gseed <- .Random.seed
-      on.exit(.Random.seed <<- gseed)
+    ## checking for extra args
+    extra_args <- list(...)
+    extra_args_names <- names(extra_args)
+    check_args <- function(arg, default, inp = gbt_input) {
+      if (!arg %in% extra_args_names) inp[[arg]] <- default
+      inp
     }
-    set.seed(seed)
-  }
 
-  ## capturing the iteration history
-  output <- capture.output(model <<- do.call(xgboost::xgboost, gbt_input))
+    if (type == "classification") {
+      gbt_input <- check_args("objective", "binary:logistic")
+      gbt_input <- check_args("eval_metric", "auc")
+      dty <- as.integer(dataset[[rvar]] == lev)
+    } else {
+      gbt_input <- check_args("objective", "reg:squarederror")
+      gbt_input <- check_args("eval_metric", "rmse")
+      dty <- dataset[[rvar]]
+    }
+
+    ## adding data
+    dtx <- onehot(dataset[, -1, drop = FALSE])[, -1, drop = FALSE]
+    gbt_input <- c(gbt_input, list(data = dtx, label = dty), ...)
+
+    ## based on https://stackoverflow.com/questions/14324096/setting-seed-locally-not-globally-in-r/14324316#14324316
+    seed <- gsub("[^0-9]", "", seed)
+    if (!is.empty(seed)) {
+      if (exists(".Random.seed")) {
+        gseed <- .Random.seed
+        on.exit(.Random.seed <<- gseed)
+      }
+      set.seed(seed)
+    }
+
+    ## capturing the iteration history
+    output <- capture.output(model <- do.call(xgboost::xgboost, gbt_input))
+
+    ## evaluating the model
+    if (type == "regression") {
+      metric <- mean((dataset[[rvar]] - predict(model, dtx))^2)
+      if (metric < best_metric) {
+        best_metric <- metric
+        best_model <- model
+        best_params <- params
+      }
+    } else {
+      pred <- predict(model, dtx)
+      pred <- ifelse(pred > 0.5, lev, levels(dataset[[rvar]])[1])
+      metric <- mean(pred == dataset[[rvar]])
+      if (metric > best_metric) {
+        best_metric <- metric
+        best_model <- model
+        best_params <- params
+      }
+    }
+  }
 
   ## adding residuals for regression models
   if (type == "regression") {
-    model$residuals <- dataset[[rvar]] - predict(model, dtx)
+    best_model$residuals <- dataset[[rvar]] - predict(best_model, dtx)
   } else {
-    model$residuals <- NULL
+    best_model$residuals <- NULL
   }
 
-  ## adding feature importance information
-  ## replaced by premutation importance
-  # model$importance <- xgboost::xgb.importance(model = model)
-
   ## gbt model object does not include the data by default
-  model$model <- dataset
-
-  rm(dataset, dty, dtx, rv, envir) ## dataset not needed elsewhere
-  gbt_input$data <- gbt_input$label <- NULL
+  best_model$model <- dataset
+  best_model$best_params <- best_params
 
   ## needed to work with prediction functions
   check <- ""
 
   as.list(environment()) %>% add_class(c("gbt", "model"))
 }
+
 
 #' Summary method for the gbt function
 #'
@@ -215,12 +245,14 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   if (is.character(object)) {
     return(object)
   }
+
   cat("Gradient Boosted Trees (XGBoost)\n")
   if (object$type == "classification") {
     cat("Type                 : Classification")
   } else {
     cat("Type                 : Regression")
   }
+
   cat("\nData                 :", object$df_name)
   if (!is.empty(object$data_filter)) {
     cat("\nFilter               :", gsub("\\n", "", object$data_filter))
@@ -239,6 +271,7 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
+
   cat("Max depth            :", object$max_depth, "\n")
   cat("Learning rate (eta)  :", object$learning_rate, "\n")
   cat("Min split loss       :", object$min_split_loss, "\n")
@@ -246,6 +279,17 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   cat("Sub-sample           :", object$subsample, "\n")
   cat("Nr of rounds (trees) :", object$nrounds, "\n")
   cat("Early stopping rounds:", object$early_stopping_rounds, "\n")
+
+  if (!is.null(object$best_params)) {
+    cat("Best Hyperparameters:\n")
+    cat("  Max depth            :", object$best_params$max_depth, "\n")
+    cat("  Learning rate (eta)  :", object$best_params$learning_rate, "\n")
+    cat("  Min split loss       :", object$best_params$min_split_loss, "\n")
+    cat("  Min child weight     :", object$best_params$min_child_weight, "\n")
+    cat("  Sub-sample           :", object$best_params$subsample, "\n")
+    cat("  Nr of rounds (trees) :", object$best_params$nrounds, "\n")
+  }
+
   if (length(object$extra_args)) {
     extra_args <- deparse(object$extra_args) %>%
       sub("list\\(", "", .) %>%
@@ -270,6 +314,7 @@ summary.gbt <- function(object, prn = TRUE, ...) {
     cat(paste0(ih, collapse = "\n"))
   }
 }
+
 
 #' Plot method for the gbt function
 #'
@@ -724,3 +769,4 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
     out[order(out[[5]], decreasing = FALSE), ]
   }
 }
+
