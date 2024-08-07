@@ -565,11 +565,10 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       specific_prediction <- profile_df %>%
         dplyr::filter(if_all(all_of(names(new_observation_df)), ~ . == new_observation_df[[deparse(substitute(.))]]))
       
-      
       # If needed, return the survival probabilities or risk scores from the specific prediction
       # Here, we'll assume the user wants to see the survival probabilities
       survival_prob_df <- specific_prediction %>%
-        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_` )
+        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`, -`_vtype_` )
       result$plot <- plot(survex::predict_profile(object$cph_exp, new_observation = new_observation_df))
     } else {
       stop("Cox regression model not found in the object. Please ensure cox_regression was set to TRUE when calling gbt_survival.")
@@ -593,13 +592,12 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       specific_prediction <- profile_df %>%
         dplyr::filter(if_all(all_of(names(new_observation_df)), ~ . == new_observation_df[[deparse(substitute(.))]]))
       
-      
       # If needed, return the survival probabilities or risk scores from the specific prediction
       # Here, we'll assume the user wants to see the survival probabilities
       survival_prob_df <- specific_prediction %>%
-        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`,-`_vtype_`)
+        dplyr::select(-`_label_`, -`_vname_`, -`_ids_`, -`_vtype_`)
       result$plot <- plot(survex::predict_profile(rf_fit$explainer_rf, new_observation = new_observation_df))
- 
+      
       
     } else {
       stop("Random Forest model not found in the object. Please ensure random_forest was set to TRUE when calling gbt_survival.")
@@ -618,9 +616,9 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
       time_interest <- sort(unique(object$train_data$new_time[object$train_data$status == 1]))
       basehaz_cum <- basehaz.gbm(object$train_data$time, object$train_data$status, pred.train, t.eval = time_interest, cumulative = TRUE)
       surf.i <- exp(-exp(pred.test[1]) * basehaz_cum)
-    # Extract explanatory variables from xgb.DMatrix
-
-    # Combine predictions with explanatory variables from the test set
+      # Extract explanatory variables from xgb.DMatrix
+      
+      # Combine predictions with explanatory variables from the test set
       survival_prob_df <- data.frame(
         new_observation_df,
         times = time_interest,
@@ -642,21 +640,21 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
           yhat = temp_surf_i,
           var_value = temp_data[[var]]
         )
-
+        
         plot <- ggplot(plot_data, aes(x = times, y = yhat)) +
           geom_line(color = "red") +
           labs(title = paste("Survival Curve for", var, "=", new_observation_df[[var]]), 
                x = "Time", y = "Survival Probability") +
           theme_minimal() 
-  
+        
         plots[[var]] <- plot
-      }
-      
       }
       result$plot <- do.call(grid.arrange, c(plots, ncol = 2))
       
     }
     
+  }
+  
   # Create the formatted output
   header <- paste(
     "Survival Prediction",
@@ -669,17 +667,24 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   )
   
   # Limit the number of rows shown to 10 for the output
-  survival_prob_df_shown <- survival_prob_df[1:30, ]
+  total_rows <- nrow(survival_prob_df)
+  if (total_rows > 20) {
+    selected_indices <- round(seq(1, total_rows, length.out = 20))
+    survival_prob_df_shown <- survival_prob_df[selected_indices, ]
+  } else {
+    survival_prob_df_shown <- survival_prob_df
+  }
+  
   # Print the header and the data frame
   survival_prob_df %>%
     set_attr("radiant_pred_data", df_name)
- # Print the header and the data frame
- # cat(header, "\n\n")
+  # Print the header and the data frame
+  # cat(header, "\n\n")
   result$text <- paste(header, "\n\n", paste(capture.output(print(survival_prob_df_shown)), collapse = "\n"), sep = "\n")
   
   
   return(result)
-  }
+}
 
 
 
