@@ -38,9 +38,9 @@
 #'
 #' @export
 rforest <- function(dataset, rvar, evar, type = "classification", lev = "",
-                    mtry = c(1), num.trees = c(100), min.node.size = c(1),
-                    sample.fraction = c(1), replace = NULL,
-                    num.threads = c(12), wts = "None", seed = NA,
+                    mtry = NULL, num.trees = 100, min.node.size = 1,
+                    sample.fraction = 1, replace = NULL,
+                    num.threads = 12, wts = "None", seed = NA,
                     data_filter = "", arr = "", rows = NULL, envir = parent.frame(), ...) {
   if (rvar %in% evar) {
     return("Response variable contained in the set of explanatory variables.\nPlease update model specification." %>%
@@ -110,78 +110,53 @@ rforest <- function(dataset, rvar, evar, type = "classification", lev = "",
     replace <- ifelse(sample.fraction < 1, FALSE, TRUE)
   }
 
-  ## Define hyperparameter grid
-  hyper_grid <- expand.grid(
+  ## use decay http://stats.stackexchange.com/a/70146/61693
+  rforest_input <- list(
+    formula = as.formula(paste(rvar, "~ . ")),
     mtry = mtry,
     num.trees = num.trees,
     min.node.size = min.node.size,
+    probability = probability,
+    importance = "permutation",
     sample.fraction = sample.fraction,
-    num.threads = num.threads
+    replace = replace,
+    num.threads = num.threads,
+    case.weights = wts,
+    data = dataset,
+    ...
   )
+  extra_args <- list(...)
 
-  ## Initialize variables to store the best model and its performance
-  best_model <- NULL
-  best_metric <- if (type == "regression") Inf else -Inf
-  best_params <- NULL
-
-  ## Iterate over each combination of hyperparameters
-  for (i in seq_len(nrow(hyper_grid))) {
-    params <- hyper_grid[i, ]
-    ## Ensure mtry is valid
-    if (params$mtry > length(vars)) {
-      next
+  ## based on https://stackoverflow.com/a/14324316/1974918
+  seed <- gsub("[^0-9]", "", seed)
+  if (!is.empty(seed)) {
+    if (exists(".Random.seed")) {
+      gseed <- .Random.seed
+      on.exit(.Random.seed <<- gseed)
     }
-    rforest_input <- list(
-      formula = as.formula(paste(rvar, "~ . ")),
-      mtry = params$mtry,
-      num.trees = params$num.trees,
-      min.node.size = params$min.node.size,
-      probability = probability,
-      importance = "permutation",
-      sample.fraction = params$sample.fraction,
-      replace = replace,
-      num.threads = params$num.threads,
-      case.weights = wts,
-      data = dataset,
-      ...
-    )
-
-    ## based on https://stackoverflow.com/a/14324316/1974918
-    seed <- gsub("[^0-9]", "", seed)
-    if (!is.empty(seed)) {
-      if (exists(".Random.seed")) {
-        gseed <- .Random.seed
-        on.exit(.Random.seed <<- gseed)
-      }
-      set.seed(seed)
-    }
-
-    model <- do.call(ranger::ranger, rforest_input)
-
-    if (type == "regression") {
-      metric <- mean((dataset[[rvar]] - model$predictions)^2)
-      if (metric < best_metric) {
-        best_metric <- metric
-        best_model <- model
-        best_params <- params
-      }
-    } else {
-      pred <- ifelse(model$predictions[, 2] > 0.5, levels(dataset[[rvar]])[2], levels(dataset[[rvar]])[1])
-      metric <- mean(pred == dataset[[rvar]])
-      if (metric > best_metric) {
-        best_metric <- metric
-        best_model <- model
-        best_params <- params
-      }
-    }
+    set.seed(seed)
   }
 
-  ## Return the best model along with the best hyperparameters
-  best_model$residuals <- if (type == "regression") dataset[[rvar]] - best_model$predictions else NULL
-  best_model$model <- dataset
-  best_model$best_params <- best_params
+  model <- do.call(ranger::ranger, rforest_input)
+
+  ## rforest doesn't return residuals
+  if (type == "regression") {
+    model$residuals <- dataset[[rvar]] - model$predictions
+  } else {
+    model$residuals <- NULL
+  }
+
+  ## rforest model object does not include the data by default
+  model$model <- dataset
+
+  rm(dataset, envir, rforest_input) ## dataset not needed elsewhere
+
+  ## needed to work with prediction functions
+  check <- ""
+
   as.list(environment()) %>% add_class(c("rforest", "model"))
 }
+
 #' Summary method for the rforest function
 #'
 #' @details See \url{https://radiant-rstats.github.io/docs/model/rforest.html} for an example in Radiant
@@ -226,23 +201,11 @@ summary.rforest <- function(object, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
-  
-  # Correctly access and print the best hyperparameters
-  best_params <- object$best_params
-  if (!is.null(best_params)) {
-    cat("Mtry                 :", best_params$mtry, "\n")
-    cat("Number of trees      :", best_params$num.trees, "\n")
-    cat("Min node size        :", best_params$min.node.size, "\n")
-    cat("Sample fraction      :", best_params$sample.fraction, "\n")
-    cat("Number of threads    :", best_params$num.threads, "\n")
-  } else {
-    cat("Mtry                 :", object$mtry, "\n")
-    cat("Number of trees      :", object$num.trees, "\n")
-    cat("Min node size        :", object$min.node.size, "\n")
-    cat("Sample fraction      :", object$sample.fraction, "\n")
-    cat("Number of threads    :", object$num.threads, "\n")
-  }
-  
+  cat("Mtry                 :", object$mtry, "\n")
+  cat("Number of trees      :", object$num.trees, "\n")
+  cat("Min node size        :", object$min.node.size, "\n")
+  cat("Sample fraction      :", object$sample.fraction, "\n")
+  cat("Number of threads    :", object$num.threads, "\n")
   if (length(object$extra_args)) {
     extra_args <- deparse(object$extra_args) %>%
       sub("list\\(", "", .) %>%
@@ -254,33 +217,12 @@ summary.rforest <- function(object, ...) {
   } else {
     cat("Nr obs               :", format_nr(length(object$rv), dec = 0), "\n")
   }
-  if (object$type == "regression") {
-    cat("R-squared            :", format_nr(object$best_model$r.squared, dec = 3), "\n")
-    cat("MSE                  :", format_nr(mean((object$model$model[[object$rvar]] - object$model$predictions)^2), dec = 3), "\n")
-  } else {
-    accuracy <- object$best_metric
-    cat("Accuracy             :", format_nr(accuracy, dec = 3), "\n")
+  if (object$type != "classification") {
+    cat("R-squared            :", format_nr(object$model$r.square, dec = 3), "\n")
   }
   OOB <- ifelse(object$type == "classification", object$model$prediction.error, sqrt(object$model$prediction.error))
   cat("OOB prediction error :", format_nr(OOB, dec = 3), "\n")
-  
-  ## Explanation for interpretation
-  cat("\nHow to Interpret the Values:\n")
-  cat("OOB prediction error: Out-of-bag (OOB) error is an internal error estimate\n")
-  cat("of a random forest as it is being constructed. Lower values indicate better\n")
-  cat("model performance.\n")
-  if (object$type == "classification") {
-    cat("Accuracy: The proportion of correctly classified instances. Higher values\n")
-    cat("indicate better model performance.\n")
-  } else {
-    cat("MSE: Mean Squared Error measures the average of the squares of the errors.\n")
-    cat("Lower values indicate better model performance.\n")
-    cat("R-squared: Represents the proportion of the variance for a dependent variable\n")
-    cat("that's explained by the independent variables. Values closer to 1 indicate\n")
-    cat("better model performance.\n")
-  }
 }
-
 
 #' Plot method for the rforest function
 #'
@@ -748,4 +690,3 @@ cv.rforest <- function(object, K = 5, repeats = 1, mtry = 1:5, num.trees = NULL,
   colnames(out)[1] <- cn
   out
 }
-
