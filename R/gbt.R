@@ -309,6 +309,14 @@ summary.gbt <- function(object, prn = TRUE, ...) {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
 
+  if (!is.null(object$model$evaluation_log)) {
+    cat("The Train RMSE provides an estimate of the model's prediction error on the training data.\n")
+    cat("It is calculated as the square root of the average squared differences between the predicted and actual values. Here's how to interpret it:\n")
+    cat("  - A lower RMSE indicates better fit and fewer errors.\n")
+    cat("  - Compare the RMSE to the range of the response variable to get a sense of the model's performance.\n")
+    cat("  - Use RMSE in conjunction with other metrics and cross-validation results to assess model performance comprehensively.\n")
+  }
+
   if (isTRUE(prn)) {
     cat("\nIteration history:\n\n")
     ih <- object$output[c(-2, -3)]
@@ -316,6 +324,7 @@ summary.gbt <- function(object, prn = TRUE, ...) {
     cat(paste0(ih, collapse = "\n"))
   }
 }
+
 
 
 #' Plot method for the gbt function
@@ -545,8 +554,28 @@ predict.gbt <- function(object, pred_data = NULL, pred_cmd = "",
     }
   }
 
-  predict_model(object, pfun, "gbt.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
+  result <- predict_model(object, pfun, "gbt.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
     set_attr("radiant_pred_data", df_name)
+
+  ## Print the interpretation guide for users
+  cat("\n### Interpreting Prediction Values ###\n")
+  if (object$type == "classification") {
+    cat("
+    For Classification:
+    - Each prediction is a probability distribution over the possible classes.
+    - Each column in the prediction output represents a possible class label.
+    - Each cell contains the probability that the given observation belongs to that class.
+    - The class with the highest probability is the predicted class for that observation.\n")
+  } else {
+    cat("
+    For Regression:
+    - Each prediction is a continuous value representing the estimated response.
+    - Each row represents a single observation.
+    - The predicted value in each row is the model's estimate for the response variable for that observation.
+    - Compare the predicted values to the actual values to assess the model's performance.\n")
+  }
+
+  return(result)
 }
 
 
@@ -775,5 +804,4 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
     out[order(out[[5]], decreasing = FALSE), ]
   }
 }
-
 
