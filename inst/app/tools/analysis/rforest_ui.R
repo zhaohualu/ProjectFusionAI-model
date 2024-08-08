@@ -19,14 +19,6 @@ rf_inputs <- reactive({
   for (i in r_drop(names(rf_args))) {
     rf_args[[i]] <- input[[paste0("rf_", i)]]
   }
-
-  # Parse the comma-separated values for hyperparameters
-  rf_args$mtry <- as.numeric(unlist(strsplit(input$rf_mtry, ",")))
-  rf_args$num.trees <- as.numeric(unlist(strsplit(input$rf_num_trees, ",")))
-  rf_args$min.node.size <- as.numeric(unlist(strsplit(input$rf_min_node_size, ",")))
-  rf_args$sample.fraction <- as.numeric(unlist(strsplit(input$rf_sample_fraction, ",")))
-  rf_args$num.threads <- as.numeric(unlist(strsplit(input$rf_num_threads, ",")))
-
   rf_args
 })
 
@@ -89,7 +81,6 @@ rf_pred_plot_inputs <- reactive({
   rf_pred_plot_args
 })
 
-
 output$ui_rf_rvar <- renderUI({
   req(input$rf_type)
 
@@ -112,10 +103,25 @@ output$ui_rf_rvar <- renderUI({
 
   selectInput(
     inputId = "rf_rvar",
-    label = HTML("<b>Response variable:</b>"),
+    label = "Response variable:",
     choices = vars,
     selected = state_single("rf_rvar", vars, init),
     multiple = FALSE
+  )
+})
+
+output$ui_rf_lev <- renderUI({
+  req(input$rf_type == "classification")
+  req(available(input$rf_rvar))
+  levs <- .get_data()[[input$rf_rvar]] %>%
+    as_factor() %>%
+    levels()
+
+  init <- if (is.empty(input$logit_lev)) isolate(input$rf_lev) else input$logit_lev
+  selectInput(
+    inputId = "rf_lev", label = "Choose first level:",
+    choices = levs,
+    selected = state_init("rf_lev", init)
   )
 })
 
@@ -136,7 +142,7 @@ output$ui_rf_evar <- renderUI({
 
   selectInput(
     inputId = "rf_evar",
-    label = HTML("<b>Explanatory variables:</b>"),
+    label = "Explanatory variables:",
     choices = vars,
     selected = state_multiple("rf_evar", vars, init),
     multiple = TRUE,
@@ -163,7 +169,7 @@ output$ui_rf_wts <- renderUI({
   vars <- c("None", vars)
 
   selectInput(
-    inputId = "rf_wts", label = HTML("<b>Weights:</b> Select based on how much you want to adjust the influence of individual variables on the construction of the trees within the forest."), choices = vars,
+    inputId = "rf_wts", label = "Weights:", choices = vars,
     selected = state_single("rf_wts", vars),
     multiple = FALSE
   )
@@ -255,32 +261,36 @@ output$ui_rf <- renderUI({
         uiOutput("ui_rf_wts"),
         with(tags, table(
           tr(
-            td(textInput(
+            td(numericInput(
               "rf_mtry",
-              label = HTML("<b>mtry:</b> (comma-separated values)"), value = state_init("rf_mtry", "1")
+              label = "mtry:", min = 1, max = 20,
+              value = state_init("rf_mtry", 1)
             ), width = "50%"),
-            td(textInput(
-              "rf_num_trees",
-              label = HTML("<b>Number of trees:</b> (comma-separated values)"), value = state_init("rf_num_trees", "100")
+            td(numericInput(
+              "rf_num.trees",
+              label = "# trees:", min = 1, max = 1000,
+              value = state_init("rf_num.trees", 100)
             ), width = "50%")
           ),
           width = "100%"
         )),
         with(tags, table(
           tr(
-            td(textInput(
-              "rf_min_node_size",
-              label = HTML("<b>Min node size:</b> (comma-separated values)"), value = state_init("rf_min_node_size", "1")
+            td(numericInput(
+              "rf_min.node.size",
+              label = "Min node size:", min = 1, max = 100,
+              step = 1, value = state_init("rf_min.node.size", 1)
             ), width = "50%"),
-            td(textInput(
-              "rf_sample_fraction",
-              label = HTML("<b>Sample fraction:</b> (comma-separated values)"), value = state_init("rf_sample_fraction", "1")
+            td(numericInput(
+              "rf_sample.fraction",
+              label = "Sample fraction:",
+              min = 0, max = 1, step = 0.1,
+              value = state_init("rf_sample.fraction", 1)
             ), width = "50%")
           ),
           width = "100%"
         )),
-        textInput("rf_num_threads", label = HTML("<b>Number of threads:</b> (comma-separated values)"), value = state_init("rf_num_threads", "12")),
-        numericInput("rf_seed", label = HTML("<b>Seed:</b>"), value = state_init("rf_seed", 1234))
+        numericInput("rf_seed", label = "Seed:", value = state_init("rf_seed", 1234))
       ),
       conditionalPanel(
         condition = "input.tabs_rf == 'Predictions'",
@@ -342,7 +352,7 @@ output$ui_rf <- renderUI({
         # )
       ),
       # conditionalPanel(
-      #   condition = "input.tabs_rf == 'Model Summary'",
+      #   condition = "input.tabs_rf == 'Summary'",
       #   tags$table(
       #     tags$td(uiOutput("ui_rf_store_res_name")),
       #     tags$td(actionButton("rf_store_res", "Store", icon = icon("plus", verify_fa = FALSE)), class = "top")
@@ -421,17 +431,67 @@ output$rf <- renderUI({
     id = "tabs_rf",
     tabPanel(
       "Model Summary",
-      verbatimTextOutput("summary_rf")
+      verbatimTextOutput("summary_rf"),
+      HTML("
+        <h4>Interpreting Model Performance Metrics</h4>
+        <h5>Out-of-Bag (OOB) Prediction Error</h5>
+        <p>
+          The OOB prediction error is an estimate of the prediction error for a Random Forest model. It is calculated using the samples that were not used during the training of each tree (out-of-bag samples). Here's how you can interpret it:
+          <ul>
+            <li><b>Low OOB Error:</b> Indicates that the model performs well on unseen data, suggesting good generalization.</li>
+            <li><b>High OOB Error:</b> Suggests that the model may not be performing well, possibly due to overfitting (model is too complex) or underfitting (model is too simple).</li>
+          </ul>
+        </p>
+        <h5>R-squared (R²) Value</h5>
+        <p>
+          The R² value is a measure of how well the observed outcomes are replicated by the model, based on the proportion of total variation of outcomes explained by the model. Here's how you can evaluate it:
+          <ul>
+            <li><b>R² = 1:</b> Perfect fit. The model explains all the variability of the response data around its mean.</li>
+            <li><b>0 < R² < 1:</b> The model explains some but not all of the variability in the response data. Higher values indicate better model performance.</li>
+            <li><b>R² = 0:</b> The model does not explain any of the variability in the response data.</li>
+            <li><b>R² < 0:</b> The model performs worse than a horizontal line (mean of the response), indicating a very poor fit.</li>
+          </ul>
+        </p>
+        <h5>Evaluation Tips</h5>
+        <p>
+          <ul>
+            <li>Compare the OOB prediction error and R² value with those from other models to determine which model performs best.</li>
+            <li>Consider the context and domain-specific requirements. For some applications, a lower R² value might still be acceptable.</li>
+            <li>Use cross-validation or additional test data to further validate model performance.</li>
+          </ul>
+        </p>
+      ")
     ),
     tabPanel(
       "Predictions",
+      verbatimTextOutput("predict_rf"),
+      HTML("
+        <h4>Interpreting Prediction Values</h4>
+        <h5>For Classification Trees</h5>
+        <p>
+          In a classification tree, each prediction is a probability distribution over the possible classes. Here's how to interpret it:
+          <ul>
+            <li>Each column represents a possible class label.</li>
+            <li>Each cell contains the probability that the given observation belongs to that class.</li>
+            <li>The class with the highest probability is the predicted class for that observation.</li>
+          </ul>
+        </p>
+        <h5>For Regression Trees</h5>
+        <p>
+          In a regression tree, each prediction is a continuous value representing the estimated response. Here's how to interpret it:
+          <ul>
+            <li>Each row represents a single observation.</li>
+            <li>The predicted value in each row is the model's estimate for the response variable for that observation.</li>
+            <li>Compare the predicted values to the actual values to assess the model's performance.</li>
+          </ul>
+        </p>
+      "),
       conditionalPanel(
-        "input.rf_pred_plot == true",
+        condition = "input.rf_pred_plot == true",
         download_link("dlp_rf_pred"),
         plotOutput("predict_plot_rf", width = "100%", height = "100%")
       ),
-      download_link("dl_rf_pred"), br(),
-      verbatimTextOutput("predict_rf")
+      download_link("dl_rf_pred"), br()
     ),
     tabPanel(
       "Model Performance Plots",
@@ -447,6 +507,7 @@ output$rf <- renderUI({
     output_panels = rf_output_panels
   )
 })
+
 
 rf_available <- reactive({
   req(input$rf_type)
@@ -479,10 +540,10 @@ rf_available <- reactive({
   nr_evar <- length(rfi$evar)
   if (rfi$mtry > nr_evar) {
     rfi$mtry <- nr_evar
-    updateTextInput(session, "rf_mtry", value = nr_evar)
+    updateNumericInput(session, "rf_mtry", value = nr_evar)
   } else if (rfi$mtry < 0) {
     rfi$mtry <- 1
-    updateTextInput(session, "rf_mtry", value = 1)
+    updateNumericInput(session, "rf_mtry", value = 1)
   }
 
   if (is.empty(rfi$num.trees)) rfi$num.trees <- 100
@@ -738,4 +799,5 @@ observeEvent(input$modal_rf_screenshot, {
   rf_report()
   removeModal() ## remove shiny modal after save
 })
+
 
