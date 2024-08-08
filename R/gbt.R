@@ -212,7 +212,9 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
   }
 
   ## gbt model object does not include the data by default
-  best_model$model <- dataset
+  model <- best_model
+  model$model <- dataset
+  #best_model$model <- dataset
   best_model$best_params <- best_params
 
   ## needed to work with prediction functions
@@ -521,28 +523,32 @@ predict.gbt <- function(object, pred_data = NULL, pred_cmd = "",
   pfun <- function(model, pred, se, conf_lev) {
     ## ensure the factor levels in the prediction data are the
     ## same as in the data used for estimation
-    est_data <- model$model[, -1, drop = FALSE]
-    for (i in colnames(pred)) {
-      if (is.factor(est_data[[i]])) {
-        pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
+    if (!is.null(model$model)) {
+      est_data <- model$model[, -1, drop = FALSE]
+      for (i in colnames(pred)) {
+        if (is.factor(est_data[[i]])) {
+          pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
+        }
       }
+      pred <- onehot(pred[, colnames(est_data), drop = FALSE])[, -1, drop = FALSE]
+      ## for testing purposes
+      # pred <- model$model[, -1, drop = FALSE]
+      pred_val <- try(sshhr(predict(model, pred)), silent = TRUE)
+      if (!inherits(pred_val, "try-error")) {
+        pred_val %<>% as.data.frame(stringsAsFactors = FALSE) %>%
+          select(1) %>%
+          set_colnames("Prediction")
+      }
+      return(pred_val)
+    } else {
+      stop("The best_model does not contain the 'model' component.")
     }
-    pred <- onehot(pred[, colnames(est_data), drop = FALSE])[, -1, drop = FALSE]
-    ## for testing purposes
-    # pred <- model$model[, -1, drop = FALSE]
-    pred_val <- try(sshhr(predict(model, pred)), silent = TRUE)
-    if (!inherits(pred_val, "try-error")) {
-      pred_val %<>% as.data.frame(stringsAsFactors = FALSE) %>%
-        select(1) %>%
-        set_colnames("Prediction")
-    }
-
-    pred_val
   }
 
   predict_model(object, pfun, "gbt.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
     set_attr("radiant_pred_data", df_name)
 }
+
 
 #' Print method for predict.gbt
 #'
@@ -769,4 +775,5 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
     out[order(out[[5]], decreasing = FALSE), ]
   }
 }
+
 
