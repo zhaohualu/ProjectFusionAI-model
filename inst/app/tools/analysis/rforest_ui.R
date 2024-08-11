@@ -463,7 +463,24 @@ output$rf <- renderUI({
       ")
     ),
     tabPanel(
-      "Predictions",
+      "Model Performance Plots",  # Moved this tab to be the second one
+      download_link("dlp_rf"),
+      plotOutput("plot_rf", width = "100%", height = "100%"),
+      HTML("
+        <h4>Interpreting Model Performance Plots</h4>
+        <p>
+          These plots help to visualize various aspects of the Random Forest model's performance:
+          <ul>
+            <li><b>Permutation Importance:</b> Shows the importance of each variable based on how much it contributes to the model's accuracy.</li>
+            <li><b>Prediction Plots:</b> Visualizes the relationship between predicted values and actual outcomes.</li>
+            <li><b>Partial Dependence Plots:</b> Illustrates the marginal effect of selected variables on the prediction outcome.</li>
+            <li><b>Dashboard:</b> Provides a comprehensive overview of model performance metrics and diagnostics.</li>
+          </ul>
+        </p>
+      ")
+    ),
+    tabPanel(
+      "Predictions",  # Moved this tab to be the third one
       verbatimTextOutput("predict_rf"),
       HTML("
         <h4>Interpreting Prediction Values</h4>
@@ -492,11 +509,6 @@ output$rf <- renderUI({
         plotOutput("predict_plot_rf", width = "100%", height = "100%")
       ),
       download_link("dl_rf_pred"), br()
-    ),
-    tabPanel(
-      "Model Performance Plots",
-      download_link("dlp_rf"),
-      plotOutput("plot_rf", width = "100%", height = "100%")
     )
   )
 
@@ -506,6 +518,7 @@ output$rf <- renderUI({
     tool_ui = "ui_rf",
     output_panels = rf_output_panels
   )
+
 })
 
 
@@ -799,5 +812,6 @@ observeEvent(input$modal_rf_screenshot, {
   rf_report()
   removeModal() ## remove shiny modal after save
 })
+
 
 
