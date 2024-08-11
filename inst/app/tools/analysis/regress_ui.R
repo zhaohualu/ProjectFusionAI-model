@@ -29,6 +29,21 @@ reg_plots <- c(
   "Influential observations" = "influence"
 )
 
+output$plot_description <- renderText({
+  switch(input$reg_plots,
+         "dist" = "The distribution plot displays the distribution of the response and explanatory variables. Interpret by observing the distribution shape, central tendency, and spread. Look for outliers as they might influence the regression model significantly.",
+         "correlations" = "The correlations plot shows the Pearson correlation coefficients between variables. Interpret by looking for high correlations, which indicate strong relationships. High multicollinearity can affect the model’s stability.",
+         "scatter" = "Scatter plots display the relationship between pairs of variables. Interpret by assessing linearity, homoscedasticity, and checking for outliers that might influence the model.",
+         "vip" = "The permutation importance plot ranks variables based on their importance to the model. Focus on variables with higher importance scores as they explain most of the variance in the response.",
+         "pred_plot" = "The prediction plot shows the model's predictions against observed data. Interpret by checking if predicted values align closely with actual values. Systematic deviations may indicate model bias.",
+         "pdp" = "The partial dependence plot shows the effect of a single variable on the predicted outcome. Interpret by analyzing how changes in this variable affect the response, holding other variables constant.",
+         "dashboard" = "The dashboard plot provides various diagnostic views. Use it to check model performance, focusing on residual plots and influential observations for model diagnostics.",
+         "resid_pred" = "This plot shows residuals versus explanatory variables. Residuals should be randomly scattered around zero. Patterns may indicate issues like heteroscedasticity or non-linearity.",
+         "coef" = "The coefficient plot visualizes the estimated coefficients. Interpret by checking the direction and magnitude of coefficients. Confidence intervals indicate the uncertainty of these estimates.",
+         "influence" = "This plot identifies influential observations that significantly impact the model. Investigate or possibly remove these points to improve model robustness."
+  )
+})
+
 reg_args <- as.list(formals(regress))
 
 ## list of function inputs selected by user
@@ -499,7 +514,8 @@ output$regress <- renderUI({
     tabPanel(
       "Model Performance Plots",
       download_link("dlp_regress"),
-      plotOutput("plot_regress", width = "100%", height = "100%")
+      plotOutput("plot_regress", width = "100%", height = "100%"),
+      textOutput("plot_description")
     ),
     tabPanel(
       "Predictions",
