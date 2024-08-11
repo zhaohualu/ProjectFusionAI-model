@@ -22,6 +22,19 @@ logit_plots <- c(
   "Model fit" = "fit", "Coefficient (OR) plot" = "coef",
   "Influential observations" = "influence"
 )
+output$logit_plot_description <- renderText({
+  switch(input$logit_plots,
+         "dist" = "The distribution plot displays the distribution of the response and explanatory variables. Interpret by observing the distribution shape, central tendency, and spread. Look for outliers as they might influence the logistic regression model.",
+         "correlations" = "The correlations plot shows the Pearson correlation coefficients between variables. Interpret by looking for high correlations, which indicate strong relationships. High multicollinearity can affect the model’s stability.",
+         "scatter" = "Scatter plots display the relationship between pairs of variables. Interpret by assessing patterns that might suggest the presence of certain classes.",
+         "vip" = "The permutation importance plot ranks variables based on their importance to the model. Focus on variables with higher importance scores as they explain most of the variance in the response.",
+         "pred_plot" = "The prediction plot shows the model's predicted probabilities against observed data. Interpret by checking how well the predicted probabilities match with the actual outcomes.",
+         "pdp" = "The partial dependence plot shows the effect of a single variable on the predicted probability. Interpret by analyzing how changes in this variable affect the predicted probability of the outcome, holding other variables constant.",
+         "fit" = "The model fit plot shows how well the logistic model fits the data. Look for areas where the model may not perform well, particularly in regions with sparse data.",
+         "coef" = "The coefficient (Odds Ratio) plot visualizes the estimated odds ratios for the model coefficients. Interpret by checking the direction and magnitude of the odds ratios, which indicate the change in odds for a one-unit change in the predictor.",
+         "influence" = "This plot identifies influential observations that significantly impact the model. Investigate or possibly remove these points to improve model robustness."
+  )
+})
 
 ## list of function arguments
 logit_args <- as.list(formals(logistic))
@@ -66,7 +79,7 @@ logit_plot_inputs <- reactive({
   for (i in names(logit_plot_args)) {
     logit_plot_args[[i]] <- input[[paste0("logit_", i)]]
   }
-  
+
   # cat(paste0(names(logit_plot_args), " ", logit_plot_args, collapse = ", "), file = stderr(), "\n")
   logit_plot_args
 })
@@ -83,7 +96,7 @@ logit_pred_inputs <- reactive({
   for (i in names(logit_pred_args)) {
     logit_pred_args[[i]] <- input[[paste0("logit_", i)]]
   }
-  
+
   logit_pred_args$pred_cmd <- logit_pred_args$pred_data <- ""
   if (input$logit_predict == "cmd") {
     logit_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$logit_pred_cmd) %>%
@@ -97,10 +110,10 @@ logit_pred_inputs <- reactive({
       gsub("\"", "\'", .)
     logit_pred_args$pred_data <- input$logit_pred_data
   }
-  
+
   ## setting value for prediction interval type
   logit_pred_args$interval <- "confidence"
-  
+
   logit_pred_args
 })
 
@@ -147,7 +160,7 @@ output$ui_logit_evar <- renderUI({
   if (length(vars) > 0 && input$logit_rvar %in% vars) {
     vars <- vars[-which(vars == input$logit_rvar)]
   }
-  
+
   selectInput(
     inputId = "logit_evar", label = "Explanatory variables:", choices = vars,
     selected = state_multiple("logit_evar", vars, isolate(input$logit_evar)),
@@ -205,7 +218,7 @@ output$ui_logit_wts <- renderUI({
       names()
   }
   vars <- c("None", vars)
-  
+
   selectInput(
     inputId = "logit_wts", label = "Weights:", choices = vars,
     selected = state_single("logit_wts", vars),
@@ -288,7 +301,7 @@ output$ui_logit_int <- renderUI({
       }
     }
   }
-  
+
   selectInput(
     "logit_int",
     label = NULL,
@@ -470,11 +483,11 @@ logit_plot <- reactive({
   if (is.empty(input$logit_plots, "none")) {
     return()
   }
-  
+
   plot_height <- 500
   plot_width <- 650
   nr_vars <- length(input$logit_evar) + 1
-  
+
   if (input$logit_plots == "dist") {
     plot_height <- (plot_height / 2) * ceiling(nr_vars / 2)
   } else if (input$logit_plots == "fit") {
@@ -527,7 +540,7 @@ output$logistic <- renderUI({
     height_fun = "logit_plot_height",
     width_fun = "logit_plot_width"
   )
-  
+
   ## two separate tabs
   logit_output_panels <- tabsetPanel(
     id = "tabs_logistic",
@@ -535,6 +548,12 @@ output$logistic <- renderUI({
       "Model Summary",
       download_link("dl_logit_coef"), br(),
       verbatimTextOutput("summary_logistic")
+    ),
+    tabPanel(
+      "Model Performance Plots",
+      download_link("dlp_logistic"),
+      plotOutput("plot_logistic", width = "100%", height = "100%"),
+      textOutput("logit_plot_description")  # Description appears right after the plot
     ),
     tabPanel(
       "Predictions",
@@ -545,14 +564,10 @@ output$logistic <- renderUI({
       ),
       download_link("dl_logit_pred"), br(),
       verbatimTextOutput("predict_logistic")
-    ),
-    tabPanel(
-      "Model Performance Plots",
-      download_link("dlp_logistic"),
-      plotOutput("plot_logistic", width = "100%", height = "100%")
     )
   )
-  
+
+
   stat_tab_panel(
     menu = "Model > Estimate",
     tool = "Logistic regression (GLM)",
@@ -609,7 +624,7 @@ logit_available <- reactive({
   if (input$logit_predict == "cmd" && is.empty(input$logit_pred_cmd)) {
     return("** Enter prediction commands **")
   }
-  
+
   withProgress(message = "Generating predictions", value = 1, {
     lgi <- logit_pred_inputs()
     lgi$object <- .logistic()
@@ -631,7 +646,7 @@ logit_available <- reactive({
     available(input$logit_xvar),
     !is.empty(input$logit_predict, "none")
   )
-  
+
   withProgress(message = "Generating prediction plot", value = 1, {
     do.call(plot, c(list(x = .predict_logistic()), logit_pred_plot_inputs()))
   })
@@ -669,10 +684,10 @@ check_for_pdp_pred_plots <- function(mod_type) {
   } else if (logit_available() != "available") {
     return(logit_available())
   }
-  
+
   if (input$logit_plots %in% c("correlations", "scatter")) req(input$logit_nrobs)
   check_for_pdp_pred_plots("logit")
-  
+
   if (input$logit_plots == "correlations") {
     capture_plot(do.call(plot, c(list(x = .logistic()), logit_plot_inputs())))
   } else {
@@ -694,7 +709,7 @@ logistic_report <- function() {
     outputs <- c(outputs, "plot")
     figs <- TRUE
   }
-  
+
   if (!is.empty(input$logit_store_res_name)) {
     fixed <- fix_names(input$logit_store_res_name)
     updateTextInput(session, "logit_store_res_name", value = fixed)
@@ -702,26 +717,26 @@ logistic_report <- function() {
   } else {
     xcmd <- ""
   }
-  
+
   if (!is.empty(input$logit_predict, "none") &&
       (!is.empty(input$logit_pred_data) || !is.empty(input$logit_pred_cmd))) {
     pred_args <- clean_args(logit_pred_inputs(), logit_pred_args[-1])
-    
+
     if (!is.empty(pred_args$pred_cmd)) {
       pred_args$pred_cmd <- strsplit(pred_args$pred_cmd, ";\\s*")[[1]]
     } else {
       pred_args$pred_cmd <- NULL
     }
-    
+
     if (!is.empty(pred_args$pred_data)) {
       pred_args$pred_data <- as.symbol(pred_args$pred_data)
     } else {
       pred_args$pred_data <- NULL
     }
-    
+
     inp_out[[2 + figs]] <- pred_args
     outputs <- c(outputs, "pred <- predict")
-    
+
     xcmd <- paste0(xcmd, "print(pred, n = 10)")
     if (input$logit_predict %in% c("data", "datacmd")) {
       fixed <- unlist(strsplit(input$logit_store_pred_name, "(\\s*,\\s*|\\s*;\\s*)")) %>%
@@ -733,7 +748,7 @@ logistic_report <- function() {
       )
     }
     # xcmd <- paste0(xcmd, "\n# write.csv(pred, file = \"~/logit_predictions.csv\", row.names = FALSE)")
-    
+
     if (input$logit_pred_plot && !is.empty(input$logit_xvar)) {
       inp_out[[3 + figs]] <- clean_args(logit_pred_plot_inputs(), logit_pred_plot_args[-1])
       inp_out[[3 + figs]]$result <- "pred"
@@ -741,7 +756,7 @@ logistic_report <- function() {
       figs <- TRUE
     }
   }
-  
+
   update_report(
     inp_main = clean_args(logit_inputs(), logit_args),
     fun_name = "logistic",
