@@ -233,14 +233,14 @@ output$ui_gbt <- renderUI({
   req(input$dataset)
   tagList(
     conditionalPanel(
-      condition = "input.tabs_gbt == 'Summary'",
+      condition = "input.tabs_gbt == 'Model Summary'",
       wellPanel(
         actionButton("gbt_run", "Estimate model", width = "100%", icon = icon("play", verify_fa = FALSE), class = "btn-success")
       )
     ),
     wellPanel(
       conditionalPanel(
-        condition = "input.tabs_gbt == 'Summary'",
+        condition = "input.tabs_gbt == 'Model Summary'",
         radioButtons(
           "gbt_type",
           label = NULL, c("classification", "regression"),
@@ -313,7 +313,7 @@ output$ui_gbt <- renderUI({
         ))
       ),
       conditionalPanel(
-        condition = "input.tabs_gbt == 'Predict'",
+        condition = "input.tabs_gbt == 'Predictions'",
         selectInput(
           "gbt_predict",
           label = "Prediction input type:", reg_predict,
@@ -355,7 +355,7 @@ output$ui_gbt <- renderUI({
         )
       ),
       conditionalPanel(
-        condition = "input.tabs_gbt == 'Plot'",
+        condition = "input.tabs_gbt == 'Model Performance Plots'",
         uiOutput("ui_gbt_plots"),
         conditionalPanel(
           condition = "input.gbt_plots == 'dashboard'",
@@ -430,6 +430,7 @@ gbt_pred_plot_height <- function() {
 }
 
 ## output is called from the main radiant ui.R
+## output is called from the main radiant ui.R
 output$gbt <- renderUI({
   register_print_output("summary_gbt", ".summary_gbt")
   register_print_output("predict_gbt", ".predict_print_gbt")
@@ -447,23 +448,63 @@ output$gbt <- renderUI({
   gbt_output_panels <- tabsetPanel(
     id = "tabs_gbt",
     tabPanel(
-      "Summary",
+      "Model Summary",
       verbatimTextOutput("summary_gbt")
     ),
     tabPanel(
-      "Predict",
+      "Model Performance Plots",
+      download_link("dlp_gbt"),
+      plotOutput("plot_gbt", width = "100%", height = "100%"),
+      HTML("
+        <h4>Understanding Model Performance Plots</h4>
+        <p>
+          The plots tab provides various visualizations to help understand the model's performance and behavior.
+        </p>
+        <h5>Permutation Importance:</h5>
+        <p>
+          This plot shows the importance of each feature based on the decrease in model performance when the feature's values are randomly shuffled. Higher importance indicates a greater impact on the model's predictions.
+        </p>
+        <h5>Prediction Plots:</h5>
+        <p>
+          These plots display the model's predictions against the actual values, helping to visualize how well the model is performing.
+        </p>
+        <h5>Partial Dependence Plots (PDP):</h5>
+        <p>
+          PDPs show the relationship between a feature and the predicted outcome, marginalizing over the other features. It helps in understanding how changes in a feature influence the model's predictions.
+        </p>
+        <h5>Dashboard:</h5>
+        <p>
+          The dashboard provides an overview of multiple plots, giving a comprehensive view of the model's performance across different metrics and features.
+        </p>
+      ")
+    ),
+    tabPanel(
+      "Predictions",
       conditionalPanel(
         "input.gbt_pred_plot == true",
         download_link("dlp_gbt_pred"),
         plotOutput("predict_plot_gbt", width = "100%", height = "100%")
       ),
       download_link("dl_gbt_pred"), br(),
-      verbatimTextOutput("predict_gbt")
-    ),
-    tabPanel(
-      "Plot",
-      download_link("dlp_gbt"),
-      plotOutput("plot_gbt", width = "100%", height = "100%")
+      verbatimTextOutput("predict_gbt"),
+      HTML("
+        <h4>Interpreting Prediction Values</h4>
+        <p>
+          The predictions tab displays the results of the model predictions. Depending on whether you're using the model for classification or regression, the output will differ.
+        </p>
+        <h5>For Classification Tasks:</h5>
+        <p>
+          The output is a probability distribution across different classes. The predicted class is the one with the highest probability.
+        </p>
+        <h5>For Regression Tasks:</h5>
+        <p>
+          The output is a continuous value representing the model's estimate for the response variable.
+        </p>
+        <h5>Plotting Predictions:</h5>
+        <p>
+          You can choose to plot the predictions to visually inspect how well the model performs across different data points.
+        </p>
+      ")
     )
   )
 
@@ -474,6 +515,7 @@ output$gbt <- renderUI({
     output_panels = gbt_output_panels
   )
 })
+
 
 gbt_available <- reactive({
   req(input$gbt_type)
@@ -649,7 +691,7 @@ gbt_report <- function() {
   }
 
   if (!is.empty(input$gbt_predict, "none") &&
-    (!is.empty(input$gbt_pred_data) || !is.empty(input$gbt_pred_cmd))) {
+      (!is.empty(input$gbt_pred_data) || !is.empty(input$gbt_pred_cmd))) {
     pred_args <- clean_args(gbt_pred_inputs(), gbt_pred_args[-1])
 
     if (!is.empty(pred_args$pred_cmd)) {
@@ -753,3 +795,4 @@ observeEvent(input$modal_gbt_screenshot, {
   gbt_report()
   removeModal() ## remove shiny modal after save
 })
+
