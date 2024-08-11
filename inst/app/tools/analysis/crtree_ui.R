@@ -28,6 +28,17 @@ crtree_inputs <- reactive({
   crtree_args$nodes <- as.numeric(strsplit(crtree_args$nodes, ",")[[1]])
   crtree_args
 })
+output$crtree_plot_description <- renderText({
+  switch(input$crtree_plots,
+         "prune" = "The prune plot shows the effect of pruning on the complexity and error of the decision tree. Interpret by finding the optimal complexity parameter (cp) where the error is minimized.",
+         "tree" = "The tree plot visualizes the structure of the decision tree. Each split represents a decision based on a predictor variable. Interpret by following the branches to understand how decisions are made and what conditions lead to each outcome.",
+         "vip" = "The permutation importance plot ranks variables based on their importance to the model. Focus on variables with higher importance scores as they explain most of the variance in the response.",
+         "pred_plot" = "The prediction plot shows the model's predicted outcomes against observed data. Interpret by checking how well the predictions align with the actual outcomes. Any systematic deviations may indicate areas for model improvement.",
+         "pdp" = "The partial dependence plot shows the effect of a single variable on the predicted outcome. Interpret by analyzing how changes in this variable affect the response, holding other variables constant.",
+         "dashboard" = "The dashboard plot provides various diagnostic views. Use it to check model performance, focusing on residual plots and influential observations for model diagnostics."
+  )
+})
+
 
 crtree_pred_args <- as.list(if (exists("predict.crtree")) {
   formals(predict.crtree)
@@ -488,17 +499,7 @@ output$crtree <- renderUI({
       )
     ),
     tabPanel(
-      "Predictions",
-      conditionalPanel(
-        "input.crtree_pred_plot == true",
-        download_link("dlp_crtree_pred"),
-        plotOutput("predict_plot_crtree", width = "100%", height = "100%")
-      ),
-      download_link("dl_crtree_pred"), br(),
-      verbatimTextOutput("predict_crtree")
-    ),
-    tabPanel(
-      "Model Performance Plots",
+      "Model Performance Plots",  # Moved this tab to be the second one
       conditionalPanel(
         "input.crtree_plots == 'tree'",
         HTML("<i title='Save plot' class='fa fa-download action-button alignright' href='#crtree_screenshot2' id='crtree_screenshot2' onclick='generate_crtree_plot();'></i>"),
@@ -508,9 +509,21 @@ output$crtree <- renderUI({
         "input.crtree_plots != 'tree'",
         download_link("dlp_crtree"),
         plotOutput("plot_crtree", width = "100%", height = "100%")
-      )
+      ),
+      textOutput("crtree_plot_description")  # Description appears right after the plot
+    ),
+    tabPanel(
+      "Predictions",  # Moved this tab to be the third one
+      conditionalPanel(
+        "input.crtree_pred_plot == true",
+        download_link("dlp_crtree_pred"),
+        plotOutput("predict_plot_crtree", width = "100%", height = "100%")
+      ),
+      download_link("dl_crtree_pred"), br(),
+      verbatimTextOutput("predict_crtree")
     )
   )
+
   stat_tab_panel(
     menu = "Model > Estimate",
     tool = "Classification and regression trees",
