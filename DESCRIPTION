@@ -41,9 +41,7 @@ Imports:
     pdp (>= 0.8.1),
     vip (>= 0.3.2),
     stringi,
-    yaml,
-    plotly,
-    gbm
+    yaml
 Suggests:
     testthat (>= 2.0.0),
     pkgdown (>= 1.1.0)
