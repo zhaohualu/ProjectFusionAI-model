@@ -28,7 +28,10 @@
 #' @param nodesize the minimum number of cases a terminal node should hold
 #' @param nsplit Non-negative integer value used to specify random splitting
 #' @param ... Further arguments to pass to xgboost
-#'
+#' @importFrom gbm basehaz.gbm
+#' @import survivalROC
+#' @import xgboost.surv
+
 #' @return A list with all variables defined in gbt as an object of class gbt
 #'
 #' @examples
