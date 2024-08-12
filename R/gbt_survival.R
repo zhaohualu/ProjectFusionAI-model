@@ -49,12 +49,25 @@
 #' @seealso \code{\link{plot.gbt}} to plot results
 #' @seealso \code{\link{predict.gbt}} for prediction
 #'
-#' @importFrom xgboost xgboost xgb.importance xgb.DMatrix xgb.train
+#' @importFrom xgboost xgboost xgb.importance xgb.DMatrix xgb.train xgb.cv
 #' @importFrom lubridate is.Date
 #' @importFrom survival survfit survdiff Surv coxph
 #' @importFrom broom tidy
 #' @importFrom survcomp concordance.index
 #' @importFrom intsurv cIndex
+#' @importFrom randomForestSRC rfsrc vimp.rfsrc get.brier.survival
+#' @importFrom pec predictSurvProb
+#' @importFrom radiant.data does_vary set_attr
+#' @importFrom dplyr bind_rows mutate_if select_at summarise_all if_all filter everything
+#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal theme element_text scale_color_manual geom_point coord_cartesian
+#' @importFrom survminer ggadjustedcurves
+#' @importFrom caret createFolds
+#' @importFrom plotly ggplotly subplot
+#' @importFrom pec pec
+#' @importFrom gridExtra grid.arrange
+#' @importFrom shiny incProgress withProgress
+#' @importFrom survex explain predict_profile model_diagnostics brier_score integrated_brier_score
+
 #'
 #' @export
 gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
