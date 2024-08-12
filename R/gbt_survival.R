@@ -28,10 +28,7 @@
 #' @param nodesize the minimum number of cases a terminal node should hold
 #' @param nsplit Non-negative integer value used to specify random splitting
 #' @param ... Further arguments to pass to xgboost
-#' @importFrom gbm basehaz.gbm
-#' @import survivalROC
-#' @import xgboost.surv
-
+#'
 #' @return A list with all variables defined in gbt as an object of class gbt
 #'
 #' @examples
@@ -54,21 +51,16 @@
 #'
 #' @importFrom xgboost xgboost xgb.importance xgb.DMatrix xgb.train xgb.cv
 #' @importFrom lubridate is.Date
+#' @importFrom randomForestSRC rfsrc vimp.rfsrc get.brier.survival
+#' @importFrom pec predictSurvProb
 #' @importFrom survival survfit survdiff Surv coxph
 #' @importFrom broom tidy
 #' @importFrom survcomp concordance.index
 #' @importFrom intsurv cIndex
-#' @importFrom randomForestSRC rfsrc vimp.rfsrc get.brier.survival
-#' @importFrom pec predictSurvProb
-#' @importFrom radiant.data does_vary set_attr
-#' @importFrom dplyr bind_rows mutate_if select_at summarise_all if_all filter everything
-#' @importFrom ggplot2 ggplot aes geom_line labs theme_minimal theme element_text scale_color_manual geom_point coord_cartesian
-#' @importFrom survminer ggadjustedcurves
-#' @importFrom caret createFolds
-#' @importFrom plotly ggplotly subplot
-#' @importFrom pec pec
-#' @importFrom gridExtra grid.arrange
-#' @importFrom shiny incProgress withProgress
+#' @importFrom gbm basehaz.gbm
+#' @import survivalROC
+#' @import xgboost.surv
+#' @import pec
 #' @importFrom survex explain predict_profile model_diagnostics brier_score integrated_brier_score
 
 #'
@@ -307,7 +299,7 @@ gbt_survival <- function(dataset, time_var, status_var, evar, lev = "",
       cox_c_indices <- c(cox_c_indices, c_index)
       
       # Using survex to calculate survival probabilities
-      cph_exp <- suppressMessages(explain(cox_model))
+      cph_exp <- suppressMessages(survex::explain(cox_model))
       y <- cph_exp$y
       times <- cph_exp$times
       surv <- cph_exp$predict_survival_function(cox_model, cph_exp$data, times)
@@ -545,6 +537,8 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
 #' @seealso \code{\link{gbt_survival}} to generate the result
 #' @seealso \code{\link{summary.gbt_survival}} to summarize results
 #'
+#' @importFrom gridExtra grid.arrange
+
 #' @export
 predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
                                  dec = 3, envir = parent.frame(), cox_regression = FALSE, random_forest = FALSE,
@@ -701,6 +695,9 @@ predict.gbt_survival <- function(object, pred_data = NULL, pred_cmd = "",
   
   return(result)
 }
+
+
+
 
 
 
@@ -923,7 +920,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           data = new_observation,
           ylab = "Survival Rate") + labs(title = "Predicted Survival Rate Curve (Cox Model)") + 
           geom_hline(yintercept = 0.5, linetype = "dotted", color = "blue", linewidth = 1) 
-
+        
         # Convert to interactive plotly plot
         interactive_cox_plot <- ggplotly(cox_plot)
         return(interactive_cox_plot)
@@ -964,7 +961,7 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           )
         
         # Add a vertical line at the median survival time
-   
+        
         # Convert to interactive plotly plot
         interactive_rf_plot <- ggplotly(rf_plot)
         return(interactive_rf_plot)
@@ -1008,15 +1005,15 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
           )
         
         # Add a vertical line at the median survival time
-       
+        
         # Convert to interactive plotly plot
         interactive_surf_plot <- ggplotly(surf_plot)
         return(interactive_surf_plot)
         #plot_list[["surf_i"]] <- interactive_surf_plot
       }
     }
-      
-  
+    
+    
     if ("importance" %in% plots) {
       if (cox_regression) {
         # Use the predictors specified by the user in incl
@@ -1356,8 +1353,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
-
-
 
 
                                             
