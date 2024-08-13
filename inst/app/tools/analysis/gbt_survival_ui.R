@@ -1,4 +1,6 @@
 # Model selection options
+library(plotly)
+
 model_options <- c(
   "XGBoost" = "xgboost",
   "Cox Regression" = "cox",
