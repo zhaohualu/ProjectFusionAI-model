@@ -43,7 +43,8 @@ Imports:
     stringi,
     yaml,
     pec,
-    xgboost.surv
+    xgboost.surv,
+    survivalROC
 Suggests:
     testthat (>= 2.0.0),
     pkgdown (>= 1.1.0)
