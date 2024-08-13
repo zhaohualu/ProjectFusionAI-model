@@ -44,7 +44,8 @@ Imports:
     yaml,
     pec,
     intsurv,
-    survivalROC
+    survivalROC,
+    survex
 Remotes:
     github::bcjaeger/xgboost.surv
 Suggests:
