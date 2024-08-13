@@ -46,7 +46,9 @@ Imports:
     intsurv,
     survivalROC,
     survex,
-    gbm
+    gbm,
+    parallely (>= 1.38.0),
+    Matrix (>= 1.6.0)
 Remotes:
     github::bcjaeger/xgboost.surv
 Suggests:
