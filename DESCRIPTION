@@ -43,6 +43,8 @@ Imports:
     stringi,
     yaml,
     pec
+Remotes:
+    bcjaeger/xgboost.surv
 Suggests:
     testthat (>= 2.0.0),
     pkgdown (>= 1.1.0)
