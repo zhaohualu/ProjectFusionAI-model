@@ -40,6 +40,7 @@ Imports:
     xgboost (>= 1.6.0.1),
     pdp (>= 0.8.1),
     vip (>= 0.3.2),
+    Matrix (>= 1.6.0),
     stringi,
     yaml,
     pec,
