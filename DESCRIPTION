@@ -42,7 +42,9 @@ Imports:
     vip (>= 0.3.2),
     stringi,
     yaml,
-    pec
+    pec,
+    intsurv,
+    survivalROC
 Remotes:
     github::bcjaeger/xgboost.surv
 Suggests:
