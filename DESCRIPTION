@@ -45,7 +45,8 @@ Imports:
     pec,
     intsurv,
     survivalROC,
-    survex
+    survex,
+    gbm
 Remotes:
     github::bcjaeger/xgboost.surv
 Suggests:
