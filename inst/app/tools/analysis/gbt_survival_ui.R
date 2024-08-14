@@ -1,6 +1,5 @@
 # Model selection options
 library(plotly)
-
 model_options <- c(
   "XGBoost" = "xgboost",
   "Cox Regression" = "cox",
@@ -29,7 +28,7 @@ gbt_survival_inputs <- reactive({
   gbt_survival_args$random_forest <- (input$model_selection == "rf")
   gbt_survival_args$time_var <- input$gbt_survival_time_var
   gbt_survival_args$status_var <- input$gbt_survival_status_var
-
+  
   for (i in r_drop(names(gbt_survival_args))) {
     if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds", "ntree", "mtry", "nodesize", "nsplit")) {
       gbt_survival_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_survival_", i)]], ",")))
@@ -64,7 +63,7 @@ gbt_survival_pred_inputs <- reactive({
   for (i in names(gbt_survival_pred_args)) {
     gbt_survival_pred_args[[i]] <- input[[paste0("gbt_survival_", i)]]
   }
-
+  
   gbt_survival_pred_args$pred_cmd <- gbt_survival_pred_args$pred_data <- ""
   if (input$gbt_survival_predict == "cmd") {
     gbt_survival_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_survival_pred_cmd) %>%
@@ -82,7 +81,7 @@ gbt_survival_pred_inputs <- reactive({
   gbt_survival_pred_args$cox_regression <- if (input$model_selection == "cox") TRUE else FALSE
   gbt_survival_pred_args$random_forest <- if (input$model_selection == "rf") TRUE else FALSE
   gbt_survival_pred_args$status_var <- input$gbt_survival_status_var
-
+  
   gbt_survival_pred_args
 })
 
@@ -316,7 +315,7 @@ output$ui_gbt_survival <- renderUI({
       )
     ),
     help_and_report(
-      modal_title = "Gradient Boosted Trees",
+      modal_title = "Survival Analysis",
       fun_name = "gbt_survival",
       help_file = inclMD(file.path(getOption("radiant.path.model"), "app/tools/help/gbt_survival.Rmd"))
     )
@@ -371,7 +370,7 @@ observeEvent(input$gbt_survival_run, {
   if (is.empty(gbti$mtry)) gbti$mtry <- 3
   if (is.empty(gbti$nodesize)) gbti$nodesize <- 15
   if (is.empty(gbti$nsplit)) gbti$nsplit <- 0
-
+  
   withProgress(
     message = "Estimating model", value = 1,
     {
@@ -411,22 +410,22 @@ observeEvent(input$random_forest, {
   if (gbt_survival_available() != "available") {
     return(gbt_survival_available())
   }
-
+  
   new_obs <- sapply(input$gbt_survival_evar, function(var) {
     input[[paste0("new_obs_", var)]]
   }, simplify = TRUE, USE.NAMES = TRUE)
-
+  
   # Ensure new_obs is named and numeric
   new_obs <- as.numeric(new_obs)
   names(new_obs) <- input$gbt_survival_evar
-
+  
   # Check if all new_obs values are non-NULL and numeric
   if (any(sapply(new_obs, is.null))) {
     return(list(text = "** Please enter values for all variables **", plot = NULL))
   }
-
+  
   # Format new_obs as named vector with proper format
-
+  
   withProgress(message = "Generating predictions", value = 1, {
     gbti <- gbt_survival_pred_inputs()
     gbti$object <- .gbt_survival()
@@ -491,7 +490,7 @@ gbt_survival_plot_height <- function() {
 output$gbt_survival <- renderUI({
   register_print_output("summary_gbt_survival", ".summary_gbt_survival")
   register_print_output("predict_gbt_survival", ".predict_print_gbt_survival")
-
+  
   # Four separate tabs
   gbt_survival_output_panels <- tabsetPanel(
     id = "tabs_gbt_survival",
@@ -545,15 +544,15 @@ output$gbt_survival <- renderUI({
         plotlyOutput("predict_plot_gbt_survival", width = "80%", height = "90%")
       ),
       download_link("dl_gbt_survival_pred"), br(),
-        fluidRow(
-          column(6, verbatimTextOutput("predict_gbt_survival_text")),
-          column(6, wellPanel(
-            h4("Ceteris Paribus Survival Profile Interpretation"),
-            p("The ceteris paribus survival profile plot helps to understand how the predicted survival probability changes with different values of a particular variable, while keeping other variables constant."),
-            p("In the plot, the x-axis represents the time, and the y-axis represents the survival probability. Different lines represent different values of the variable of interest."),
-            p("The red line in the plot represents the survival function for the value you indicated of the variable being analyzed. This allows you to compare the effect of different variable values against this baseline.")
-          ))
-        ),
+      fluidRow(
+        column(6, verbatimTextOutput("predict_gbt_survival_text")),
+        column(6, wellPanel(
+          h4("Ceteris Paribus Survival Profile Interpretation"),
+          p("The ceteris paribus survival profile plot helps to understand how the predicted survival probability changes with different values of a particular variable, while keeping other variables constant."),
+          p("In the plot, the x-axis represents the time, and the y-axis represents the survival probability. Different lines represent different values of the variable of interest."),
+          p("The red line in the plot represents the survival function for the value you indicated of the variable being analyzed. This allows you to compare the effect of different variable values against this baseline.")
+        ))
+      ),
       plotOutput("predict_gbt_survival_plot", width = "1200px", height = "500px")
     ),
     tabPanel(
@@ -562,10 +561,10 @@ output$gbt_survival <- renderUI({
       plotlyOutput("plot_gbt_survival", width = "1200px", height = "600px")
     )
   )
-
+  
   stat_tab_panel(
     menu = "Model > Trees",
-    tool = "Gradient Boosted Trees",
+    tool = "Survival Analysis",
     tool_ui = "ui_gbt_survival",
     output_panels = gbt_survival_output_panels
   )
@@ -576,14 +575,14 @@ output$gbt_survival <- renderUI({
 
 output$importance_plot_gbt_survival <- renderPlotly({
   req(model_estimated())  # Ensure the model has been estimated before plotting
-
+  
   isolate({
     model <- .gbt_survival()
     req(!is.null(model), !is.null(model$evar))  # Check model and required variables
-
+    
     is_cox <- input$model_selection == "cox"
     is_rf <- input$model_selection == "rf"
-
+    
     tryCatch({
       plot(model, plots = "importance", incl = model$evar, cox_regression = is_cox, random_forest = is_rf)
     }, error = function(e) {
@@ -598,7 +597,7 @@ output$residual_plot <- renderPlot({
   isolate({
     model <- .gbt_survival()
     req(!is.null(model), !is.null(model$evar))  # Check model and required variables
-
+    
     tryCatch({
       plot(model, plots = "residual", incl = model$evar, cox_regression = input$model_selection == "cox", random_forest = input$model_selection == "rf")
     }, error = function(e) {
@@ -610,11 +609,11 @@ output$residual_plot <- renderPlot({
 })
 output$brier_score_plot <- renderPlot({
   req(model_estimated())  # Ensure the model has been estimated before plotting
-
+  
   isolate({
     model <- .gbt_survival()
     req(!is.null(model), !is.null(model$evar))  # Check model and required variables
-
+    
     tryCatch({
       plot(model, plots = "brier", incl = model$evar, cox_regression = input$model_selection == "cox", random_forest = input$model_selection == "rf")
     }, error = function(e) {
@@ -628,22 +627,22 @@ output$brier_score_plot <- renderPlot({
 # Observe event to create the ROC curve plot when the "Update" button is pressed
 observeEvent(input$update_roc, {
   req(model_estimated())  # Ensure the model has been estimated before plotting
-
+  
   output$roc_curve_plot <- renderPlot({
     validate(
       need(!is.null(input$roc_times), "Please provide a ROC time."),
       need(!is.null(input$gbt_survival_evar), "Please select explanatory variables.")
     )
-
+    
     # Extract data and inputs
     model <- .gbt_survival()
-
+    
     # Extract user-defined ROC time
     roc_time <- as.numeric(input$roc_times)
     req(!is.na(roc_time))  # Ensure ROC time is valid
-
+    
     # Generate the ROC curve plot
-
+    
     plot(model, plots = "roc", incl = model$evar,
          cox_regression = input$model_selection == "cox",
          random_forest = input$model_selection == "rf",
@@ -660,7 +659,7 @@ observeEvent(input$update_roc, {
   } else if (is.empty(input$gbt_survivxal_plots, "none")) {
     return("Please select a plot from the drop-down menu")
   }
-
+  
   pinp <- gbt_survival_plot_inputs()
   pinp$shiny <- TRUE
   check_for_pdp_pred_plots("gbt_survival")
@@ -674,7 +673,7 @@ observeEvent(input$create_plot, {
   req(input$gbt_survival_plots)
   req(input$incl)
   req(input$gbt_survival_evar)
-
+  
   output$plot_gbt_survival <- renderPlotly({
     validate(
       need(input$incl, "Please select variables to include in the KM plot."),
@@ -685,7 +684,7 @@ observeEvent(input$create_plot, {
     gbt_surv <- gbt_survival_inputs()
     km_plots <- input$gbt_survival_plots
     km_incl <- input$incl
-
+    
     km_evar_values <- lapply(input$incl, function(var) {
       values <- input[[paste0("evar_values_", var)]]
       if (!is.null(values) && values != "") {
@@ -696,12 +695,12 @@ observeEvent(input$create_plot, {
     })
     names(km_evar_values) <- input$incl
     km_evar_values <- km_evar_values[!sapply(km_evar_values, is.null)]
-
+    
     gbt_surv$plots <- km_plots
     gbt_surv$incl <- km_incl
     gbt_surv$evar_values <- km_evar_values
     gbt_surv$dataset <- dataset
-
+    
     gbt_surv$time_var <- input$gbt_survival_time_var
     gbt_surv$status_var <- input$gbt_survival_status_var
     gbt_surv$evar <- input$gbt_survival_evar
