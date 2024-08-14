@@ -563,7 +563,7 @@ output$gbt_survival <- renderUI({
   )
   
   stat_tab_panel(
-    menu = "Model > Trees",
+    menu = "Model > Survival Analysis",
     tool = "Survival Analysis",
     tool_ui = "ui_gbt_survival",
     output_panels = gbt_survival_output_panels
