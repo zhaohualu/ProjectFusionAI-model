@@ -1,8 +1,4 @@
-# Radiant - Business analytics using R and Shiny
-
-<!-- [![Build Status](https://travis-ci.org/radiant-rstats/radiant.model.png?branch=master)](https://travis-ci.org/radiant-rstats/radiant.model) -->
-<!-- [![Coverage Status](https://img.shields.io/coveralls/vnijs/radiant.svg)](https://coveralls.io/r/vnijs/radiant?branch=master) -->
-[![CRAN\_Status\_Badge](http://www.r-pkg.org/badges/version/radiant.model)](https://CRAN.R-project.org/package=radiant.model)
+# ProjectFusionAI-model - Machine Learning for Drug Development using R and Shiny
 
 
 Radiant is an open-source platform-independent browser-based interface for business analytics in [R](https://www.r-project.org/). The application is based on the [Shiny](https://shiny.posit.co/) package and can be run locally or on a server. Radiant was developed by <a href="https://rady.ucsd.edu/faculty-research/faculty/vincent-nijs.html" target="\_blank">Vincent Nijs</a>. Please use the issue tracker on GitHub to suggest enhancements or report problems: https://github.com/radiant-rstats/radiant.model/issues. For other questions and comments please use radiant@rady.ucsd.edu.
