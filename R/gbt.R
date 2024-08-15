@@ -61,6 +61,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
                 nthread = 12, wts = "None", seed = NA,
                 data_filter = "", arr = "", rows = NULL,
                 envir = parent.frame(), ...) {
+  
   if (rvar %in% evar) {
     return("Response variable contained in the set of explanatory variables.\nPlease update model specification." %>%
              add_class("gbt"))
@@ -135,7 +136,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
   best_model <- NULL
   best_metric <- if (type == "regression") Inf else -Inf
   best_params <- NULL
-  best_eval_log <- NULL
+  best_iteration_history <- NULL
   
   for (i in seq_len(nrow(param_grid))) {
     params <- param_grid[i, ]
@@ -183,7 +184,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
     }
     
     ## capturing the iteration history
-    output <- capture.output(model <- do.call(xgboost::xgboost, gbt_input))
+    iteration_history <- capture.output(model <- do.call(xgboost::xgboost, gbt_input))
     
     ## evaluating the model
     if (type == "regression") {
@@ -192,7 +193,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
         best_metric <- metric
         best_model <- model
         best_params <- params
-        best_eval_log <- model$evaluation_log
+        best_iteration_history <- iteration_history
       }
     } else {
       pred <- predict(model, dtx)
@@ -202,7 +203,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
         best_metric <- metric
         best_model <- model
         best_params <- params
-        best_eval_log <- model$evaluation_log
+        best_iteration_history <- iteration_history
       }
     }
   }
@@ -219,7 +220,7 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
   model <- best_model
   model$model <- dataset
   model$best_params <- best_params
-  model$evaluation_log <- best_eval_log
+  model$iteration_history <- best_iteration_history
   
   ## needed to work with prediction functions
   check <- ""
@@ -324,7 +325,7 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   
   if (isTRUE(prn)) {
     cat("\nIteration history:\n\n")
-    ih <- object$output[c(-2, -3)]
+    ih <- object$best_iteration_history[c(-2, -3)]
     if (length(ih) > 20) ih <- c(head(ih, 10), "...", tail(ih, 10))
     cat(paste0(ih, collapse = "\n"))
   }
