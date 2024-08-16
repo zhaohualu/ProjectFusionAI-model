@@ -733,11 +733,13 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
     "min_child_weight: ", best_params$min_child_weight, "\n",
     "subsample: ", best_params$subsample, "\n",
     "min_split_loss: ", best_params$min_split_loss, "\n",
-    "Best nrounds: ", best_params$best_iteration, "\n"
+    "Best nrounds: ", best_params$best_iteration, "\n\n",
+    "To re-run the model with these parameters, please update the estimate model section with these values to get the best model."
   )
 
   # Return the results and the message
   list(results = sorted_out, message = message)
 }
+
 
 
