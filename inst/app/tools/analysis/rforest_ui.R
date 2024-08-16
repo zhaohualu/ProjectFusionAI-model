@@ -397,8 +397,11 @@ observeEvent(input$cv_rf_run, {
   )
 
   # Render the cross-validation results
-  output$cv_rf_results <- renderPrint({
-    result
+  output$cv_rforest_results <- renderPrint({
+    result$results
+  })
+  output$cv_rforest_message <- renderText({
+    result$message
   })
 })
 
@@ -469,7 +472,8 @@ output$rf <- renderUI({
       verbatimTextOutput("summary_rf"),
       br(),
       h4("Cross Validation Results"),
-      verbatimTextOutput("cv_rf_results"),
+      verbatimTextOutput("cv_rforest_results"),
+      verbatimTextOutput("cv_rforest_message"),
       HTML("
         <h4>Interpreting Model Performance Metrics</h4>
         <h5>Out-of-Bag (OOB) Prediction Error</h5>
@@ -850,6 +854,7 @@ observeEvent(input$modal_rf_screenshot, {
   rf_report()
   removeModal() ## remove shiny modal after save
 })
+
 
 
 
