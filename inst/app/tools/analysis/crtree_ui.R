@@ -303,10 +303,17 @@ observeEvent(input$cv_crtree_run, {
     seed = input$cv_crtree_seed
   )
 
+  # Display the results in the UI
   output$cv_crtree_results <- renderPrint({
-    result
+    result$out  # Display the cross-validation results
+  })
+
+  # Display the message in the UI
+  output$cv_crtree_message <- renderText({
+    result$message  # Display the message about best parameters
   })
 })
+
 output$cv_crtree_results <- renderPrint({
   if (not_pressed(input$cv_crtree_run)) {
     return("** Press the 'Run Cross-Validation' button to see results **")
@@ -536,7 +543,8 @@ output$crtree <- renderUI({
         verbatimTextOutput("summary_crtree"),
         br(),
         h4("Cross Validation Results"),
-        verbatimTextOutput("cv_crtree_results")
+        verbatimTextOutput("cv_crtree_results"),
+        verbatimTextOutput("cv_crtree_message"),
       )
     ),
     tabPanel(
@@ -885,3 +893,4 @@ observeEvent(input$modal_crtree_screenshot2, {
   crtree_report()
   removeModal() ## remove shiny modal after save
 })
+
