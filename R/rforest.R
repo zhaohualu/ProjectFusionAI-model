@@ -688,5 +688,15 @@ cv.rforest <- function(object, K = 5, repeats = 1, mtry = 1:5, num.trees = NULL,
   }
   ## show evaluation metric in column name
   colnames(out)[1] <- cn
-  out
+  best_params <- out[1, ]
+  message <- paste0(
+    "Based on cross-validation, the best hyperparameters are:\n",
+    "mtry: ", best_params$mtry, "\n",
+    "num.trees: ", best_params$num.trees, "\n",
+    "min.node.size: ", best_params$min.node.size, "\n",
+    "sample.fraction: ", best_params$sample.fraction, "\n"
+  )
+
+  # Return results and the message
+  list(results = out, message = message)
 }
