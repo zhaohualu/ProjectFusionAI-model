@@ -17,11 +17,7 @@ gbt_inputs <- reactive({
   gbt_args$rows <- if (input$show_filter) input$data_rows else ""
   gbt_args$dataset <- input$dataset
   for (i in r_drop(names(gbt_args))) {
-    if (i %in% c("max_depth", "learning_rate", "min_split_loss", "min_child_weight", "subsample", "nrounds")) {
-      gbt_args[[i]] <- as.numeric(unlist(strsplit(input[[paste0("gbt_", i)]], ",")))
-    } else {
-      gbt_args[[i]] <- input[[paste0("gbt_", i)]]
-    }
+    gbt_args[[i]] <- input[[paste0("gbt_", i)]]
   }
   gbt_args
 })
@@ -53,7 +49,7 @@ gbt_pred_inputs <- reactive({
   for (i in names(gbt_pred_args)) {
     gbt_pred_args[[i]] <- input[[paste0("gbt_", i)]]
   }
-  
+
   gbt_pred_args$pred_cmd <- gbt_pred_args$pred_data <- ""
   if (input$gbt_predict == "cmd") {
     gbt_pred_args$pred_cmd <- gsub("\\s{2,}", " ", input$gbt_pred_cmd) %>%
@@ -87,7 +83,7 @@ gbt_pred_plot_inputs <- reactive({
 
 output$ui_gbt_rvar <- renderUI({
   req(input$gbt_type)
-  
+
   withProgress(message = "Acquiring variable information", value = 1, {
     if (input$gbt_type == "classification") {
       vars <- two_level_vars()
@@ -96,13 +92,13 @@ output$ui_gbt_rvar <- renderUI({
       vars <- varnames()[isNum]
     }
   })
-  
+
   init <- if (input$gbt_type == "classification") {
     if (is.empty(input$logit_rvar)) isolate(input$gbt_rvar) else input$logit_rvar
   } else {
     if (is.empty(input$reg_rvar)) isolate(input$gbt_rvar) else input$reg_rvar
   }
-  
+
   selectInput(
     inputId = "gbt_rvar",
     label = "Response variable:",
@@ -111,6 +107,21 @@ output$ui_gbt_rvar <- renderUI({
     multiple = FALSE
   )
 })
+output$ui_gbt_hyperparams <- renderUI({
+  tagList(
+    h4("Hypertuning Parameters Selection"),
+    textInput("cv_gbt_max_depth", "Max depth (comma-separated):", value = "1,2,3,4,5,6"),
+    textInput("cv_gbt_learning_rate", "Learning rate (comma-separated):", value = "0.1,0.2,0.3"),
+    textInput("cv_gbt_min_split_loss", "Min split loss (comma-separated):", value = "0"),
+    textInput("cv_gbt_min_child_weight", "Min child weight (comma-separated):", value = "1"),
+    textInput("cv_gbt_subsample", "Sub-sample (comma-separated):", value = "1"),
+    textInput("cv_gbt_nrounds", "# rounds (comma-separated):", value = "500"),
+    numericInput("cv_gbt_early_stopping_rounds", "Early stopping:", min = 1, max = 10, value = 10),
+    numericInput("cv_gbt_seed", "Seed:", value = 1234),
+    actionButton("cv_gbt_run", "Run Cross-Validation", icon = icon("play", verify_fa = FALSE), class = "btn-success"),
+  )
+})
+
 
 output$ui_gbt_lev <- renderUI({
   req(input$gbt_type == "classification")
@@ -118,7 +129,7 @@ output$ui_gbt_lev <- renderUI({
   levs <- .get_data()[[input$gbt_rvar]] %>%
     as_factor() %>%
     levels()
-  
+
   init <- if (is.empty(input$logit_lev)) isolate(input$gbt_lev) else input$logit_lev
   selectInput(
     inputId = "gbt_lev", label = "Choose first level:",
@@ -135,7 +146,7 @@ output$ui_gbt_evar <- renderUI({
   if (length(vars) > 0) {
     vars <- vars[-which(vars == input$gbt_rvar)]
   }
-  
+
   init <- if (input$gbt_type == "classification") {
     # input$logit_evar
     if (is.empty(input$logit_evar)) isolate(input$gbt_evar) else input$logit_evar
@@ -143,7 +154,7 @@ output$ui_gbt_evar <- renderUI({
     # input$reg_evar
     if (is.empty(input$reg_evar)) isolate(input$gbt_evar) else input$reg_evar
   }
-  
+
   selectInput(
     inputId = "gbt_evar",
     label = "Explanatory variables:",
@@ -169,7 +180,7 @@ output$ui_gbt_wts <- renderUI({
       names()
   }
   vars <- c("None", vars)
-  
+
   selectInput(
     inputId = "gbt_wts", label = "Weights:", choices = vars,
     selected = state_single("gbt_wts", vars),
@@ -257,45 +268,45 @@ output$ui_gbt <- renderUI({
         uiOutput("ui_gbt_wts"),
         with(tags, table(
           tr(
-            td(textInput(
+            td(numericInput(
               "gbt_max_depth",
-              label = "Max depth (comma-separated):",
-              value = state_init("gbt_max_depth", "6")
+              label = "Max depth:", min = 1, max = 20,
+              value = state_init("gbt_max_depth", 6)
             ), width = "50%"),
-            td(textInput(
+            td(numericInput(
               "gbt_learning_rate",
-              label = "Learning rate (comma-separated):",
-              value = state_init("gbt_learning_rate", "0.3")
+              label = "Learning rate:", min = 0, max = 1, step = 0.1,
+              value = state_init("gbt_learning_rate", 0.3)
             ), width = "50%")
           ),
           width = "100%"
         )),
         with(tags, table(
           tr(
-            td(textInput(
+            td(numericInput(
               "gbt_min_split_loss",
-              label = "Min split loss (comma-separated):",
-              value = state_init("gbt_min_split_loss", "0")
+              label = "Min split loss:", min = 0.00001, max = 1000,
+              step = 0.01, value = state_init("gbt_min_split_loss", 0)
             ), width = "50%"),
-            td(textInput(
+            td(numericInput(
               "gbt_min_child_weight",
-              label = "Min child weight (comma-separated):",
-              value = state_init("gbt_min_child_weight", "1")
+              label = "Min child weight:", min = 1, max = 100,
+              step = 1, value = state_init("gbt_min_child_weight", 1)
             ), width = "50%")
           ),
           width = "100%"
         )),
         with(tags, table(
           tr(
-            td(textInput(
+            td(numericInput(
               "gbt_subsample",
-              label = "Sub-sample (comma-separated):",
-              value = state_init("gbt_subsample", "1")
+              label = "Sub-sample:", min = 0.1, max = 1,
+              value = state_init("gbt_subsample", 1)
             ), width = "50%"),
-            td(textInput(
+            td(numericInput(
               "gbt_nrounds",
-              label = "# rounds (comma-separated):",
-              value = state_init("gbt_nrounds", "100")
+              label = "# rounds:",
+              value = state_init("gbt_nrounds", 100)
             ), width = "50%")
           ),
           width = "100%"
@@ -314,7 +325,8 @@ output$ui_gbt <- renderUI({
             ), width = "50%")
           ),
           width = "100%"
-        ))
+        )),
+        uiOutput("ui_gbt_hyperparams")  # Moved the hypertuning section to the bottom
       ),
       conditionalPanel(
         condition = "input.tabs_gbt == 'Predictions'",
@@ -415,7 +427,7 @@ gbt_plot <- reactive({
   } else if ("vip" %in% input$rf_plots) {
     plot_height <- max(500, nr_vars * 35)
   }
-  
+
   list(plot_width = plot_width, plot_height = plot_height)
 })
 
@@ -434,7 +446,6 @@ gbt_pred_plot_height <- function() {
 }
 
 ## output is called from the main radiant ui.R
-## output is called from the main radiant ui.R
 output$gbt <- renderUI({
   register_print_output("summary_gbt", ".summary_gbt")
   register_print_output("predict_gbt", ".predict_print_gbt")
@@ -447,71 +458,36 @@ output$gbt <- renderUI({
     height_fun = "gbt_plot_height",
     width_fun = "gbt_plot_width"
   )
-  
+
+  ## three separate tabs
   ## three separate tabs
   gbt_output_panels <- tabsetPanel(
     id = "tabs_gbt",
     tabPanel(
       "Model Summary",
-      verbatimTextOutput("summary_gbt")
+      verbatimTextOutput("summary_gbt"),
+      br(),
+      h4("Cross Validation Results"),
+      verbatimTextOutput("cv_gbt_results")
     ),
     tabPanel(
-      "Model Performance Plots",
+      "Model Performance Plots",  # Moved this tab above "Predictions"
       download_link("dlp_gbt"),
-      plotOutput("plot_gbt", width = "100%", height = "100%"),
-      HTML("
-        <h4>Understanding Model Performance Plots</h4>
-        <p>
-          The plots tab provides various visualizations to help understand the model's performance and behavior.
-        </p>
-        <h5>Permutation Importance:</h5>
-        <p>
-          This plot shows the importance of each feature based on the decrease in model performance when the feature's values are randomly shuffled. Higher importance indicates a greater impact on the model's predictions.
-        </p>
-        <h5>Prediction Plots:</h5>
-        <p>
-          These plots display the model's predictions against the actual values, helping to visualize how well the model is performing.
-        </p>
-        <h5>Partial Dependence Plots (PDP):</h5>
-        <p>
-          PDPs show the relationship between a feature and the predicted outcome, marginalizing over the other features. It helps in understanding how changes in a feature influence the model's predictions.
-        </p>
-        <h5>Dashboard:</h5>
-        <p>
-          The dashboard provides an overview of multiple plots, giving a comprehensive view of the model's performance across different metrics and features.
-        </p>
-      ")
+      plotOutput("plot_gbt", width = "100%", height = "100%")
     ),
     tabPanel(
-      "Predictions",
+      "Predictions",  # Moved this tab below "Model Performance Plots"
       conditionalPanel(
         "input.gbt_pred_plot == true",
         download_link("dlp_gbt_pred"),
         plotOutput("predict_plot_gbt", width = "100%", height = "100%")
       ),
       download_link("dl_gbt_pred"), br(),
-      verbatimTextOutput("predict_gbt"),
-      HTML("
-        <h4>Interpreting Prediction Values</h4>
-        <p>
-          The predictions tab displays the results of the model predictions. Depending on whether you're using the model for classification or regression, the output will differ.
-        </p>
-        <h5>For Classification Tasks:</h5>
-        <p>
-          The output is a probability distribution across different classes. The predicted class is the one with the highest probability.
-        </p>
-        <h5>For Regression Tasks:</h5>
-        <p>
-          The output is a continuous value representing the model's estimate for the response variable.
-        </p>
-        <h5>Plotting Predictions:</h5>
-        <p>
-          You can choose to plot the predictions to visually inspect how well the model performs across different data points.
-        </p>
-      ")
+      verbatimTextOutput("predict_gbt")
     )
   )
-  
+
+
   stat_tab_panel(
     menu = "Model > Trees",
     tool = "Gradient Boosted Trees",
@@ -519,7 +495,28 @@ output$gbt <- renderUI({
     output_panels = gbt_output_panels
   )
 })
+observeEvent(input$cv_gbt_run, {
+  params <- list(
+    max_depth = as.numeric(unlist(strsplit(input$cv_gbt_max_depth, ","))),
+    learning_rate = as.numeric(unlist(strsplit(input$cv_gbt_learning_rate, ","))),
+    min_split_loss = as.numeric(unlist(strsplit(input$cv_gbt_min_split_loss, ","))),
+    min_child_weight = as.numeric(unlist(strsplit(input$cv_gbt_min_child_weight, ","))),
+    subsample = as.numeric(unlist(strsplit(input$cv_gbt_subsample, ",")))
+  )
 
+  result <- cv.gbt(
+    object = .gbt(),
+    params = params,
+    nrounds = as.numeric(unlist(strsplit(input$cv_gbt_nrounds, ","))),
+    early_stopping_rounds = input$cv_gbt_early_stopping_rounds,
+    nthread = 12,
+    seed = input$cv_gbt_seed
+  )
+
+  output$cv_gbt_results <- renderPrint({
+    result
+  })
+})
 
 gbt_available <- reactive({
   req(input$gbt_type)
@@ -545,25 +542,21 @@ gbt_available <- reactive({
 })
 
 .gbt <- eventReactive(input$gbt_run, {
-  # Get the inputs from the UI
   gbti <- gbt_inputs()
-  
-  # Assign the environment
   gbti$envir <- r_data
-  
-  # Convert the input strings into numeric vectors
-  # If early_stopping_rounds is empty, handle it correctly
-  if (is.null(gbti$early_stopping_rounds) || gbti$early_stopping_rounds == "") {
-    gbti["early_stopping_rounds"] <- list(NULL)
-  }
-  
-  # Run the gbt function with the processed inputs
+  if (is.empty(gbti$max_depth)) gbti$max_depth <- 6
+  if (is.empty(gbti$learning_rate)) gbti$learning_rate <- 0.3
+  if (is.empty(gbti$min_split_loss)) gbti$min_split_loss <- 0.01
+  if (is.empty(gbti$min_child_weight)) gbti$min_child_weight <- 1
+  if (is.empty(gbti$subsample)) gbti$subsample <- 1
+  if (is.empty(gbti$nrounds)) gbti$nrounds <- 100
+  if (is.empty(gbti$early_stopping_rounds)) gbti["early_stopping_rounds"] <- list(NULL)
+
   withProgress(
     message = "Estimating model", value = 1,
     do.call(gbt, gbti)
   )
 })
-
 
 .summary_gbt <- reactive({
   if (not_pressed(input$gbt_run)) {
@@ -585,14 +578,14 @@ gbt_available <- reactive({
   if (is.empty(input$gbt_predict, "none")) {
     return("** Select prediction input **")
   }
-  
+
   if ((input$gbt_predict == "data" || input$gbt_predict == "datacmd") && is.empty(input$gbt_pred_data)) {
     return("** Select data for prediction **")
   }
   if (input$gbt_predict == "cmd" && is.empty(input$gbt_pred_cmd)) {
     return("** Enter prediction commands **")
   }
-  
+
   withProgress(message = "Generating predictions", value = 1, {
     gbti <- gbt_pred_inputs()
     gbti$object <- .gbt()
@@ -612,7 +605,7 @@ gbt_available <- reactive({
     available(input$gbt_xvar),
     !is.empty(input$gbt_predict, "none")
   )
-  
+
   withProgress(message = "Generating prediction plot", value = 1, {
     do.call(plot, c(list(x = .predict_gbt()), gbt_pred_plot_inputs()))
   })
@@ -677,11 +670,11 @@ gbt_report <- function() {
   if (is.empty(input$gbt_rvar)) {
     return(invisible())
   }
-  
+
   outputs <- c("summary")
   inp_out <- list(list(prn = TRUE), "")
   figs <- FALSE
-  
+
   if (!is.empty(input$gbt_plots, "none")) {
     inp <- check_plot_inputs(gbt_plot_inputs())
     inp_out[[2]] <- clean_args(inp, gbt_plot_args[-1])
@@ -689,7 +682,7 @@ gbt_report <- function() {
     outputs <- c(outputs, "plot")
     figs <- TRUE
   }
-  
+
   if (!is.empty(input$gbt_store_res_name)) {
     fixed <- fix_names(input$gbt_store_res_name)
     updateTextInput(session, "gbt_store_res_name", value = fixed)
@@ -697,23 +690,23 @@ gbt_report <- function() {
   } else {
     xcmd <- ""
   }
-  
+
   if (!is.empty(input$gbt_predict, "none") &&
       (!is.empty(input$gbt_pred_data) || !is.empty(input$gbt_pred_cmd))) {
     pred_args <- clean_args(gbt_pred_inputs(), gbt_pred_args[-1])
-    
+
     if (!is.empty(pred_args$pred_cmd)) {
       pred_args$pred_cmd <- strsplit(pred_args$pred_cmd, ";\\s*")[[1]]
     } else {
       pred_args$pred_cmd <- NULL
     }
-    
+
     if (!is.empty(pred_args$pred_data)) {
       pred_args$pred_data <- as.symbol(pred_args$pred_data)
     } else {
       pred_args$pred_data <- NULL
     }
-    
+
     inp_out[[2 + figs]] <- pred_args
     outputs <- c(outputs, "pred <- predict")
     xcmd <- paste0(xcmd, "print(pred, n = 10)")
@@ -725,7 +718,7 @@ gbt_report <- function() {
         input$gbt_pred_data, ", pred, name = \"", fixed, "\")"
       )
     }
-    
+
     if (input$gbt_pred_plot && !is.empty(input$gbt_xvar)) {
       inp_out[[3 + figs]] <- clean_args(gbt_pred_plot_inputs(), gbt_pred_plot_args[-1])
       inp_out[[3 + figs]]$result <- "pred"
@@ -733,12 +726,12 @@ gbt_report <- function() {
       figs <- TRUE
     }
   }
-  
+
   gbt_inp <- gbt_inputs()
   if (input$gbt_type == "regression") {
     gbt_inp$lev <- NULL
   }
-  
+
   update_report(
     inp_main = clean_args(gbt_inp, gbt_args),
     fun_name = "gbt",
@@ -797,11 +790,6 @@ observeEvent(input$gbt_report, {
 observeEvent(input$gbt_screenshot, {
   r_info[["latest_screenshot"]] <- NULL
   radiant_screenshot_modal("modal_gbt_screenshot")
-})
-
-observeEvent(input$modal_gbt_screenshot, {
-  gbt_report()
-  removeModal() ## remove shiny modal after save
 })
 
 observeEvent(input$modal_gbt_screenshot, {
