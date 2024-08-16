@@ -110,7 +110,7 @@ output$ui_gbt_rvar <- renderUI({
 output$ui_gbt_hyperparams <- renderUI({
   tagList(
     h4("Hypertuning Parameters Selection"),
-    textInput("cv_gbt_max_depth", "Max depth (comma-separated):", value = "1,2,3,4,5,6"),
+    textInput("cv_gbt_max_depth", "Max depth (comma-separated):", value = "1,2,3"),
     textInput("cv_gbt_learning_rate", "Learning rate (comma-separated):", value = "0.1,0.2,0.3"),
     textInput("cv_gbt_min_split_loss", "Min split loss (comma-separated):", value = "0"),
     textInput("cv_gbt_min_child_weight", "Min child weight (comma-separated):", value = "1"),
