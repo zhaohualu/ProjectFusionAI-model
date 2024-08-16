@@ -44,29 +44,29 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
                    pcp = NA, nodes = NA, K = 10, seed = 1234, split = "gini",
                    prior = NA, adjprob = TRUE, cost = NA, margin = NA, check = "",
                    data_filter = "", arr = "", rows = NULL, envir = parent.frame()) {
-  
+
   if (rvar %in% evar) {
     stop("Response variable contained in the set of explanatory variables. Please update model specification." %>% add_class("crtree"))
   }
-  
+
   if (is.empty(cp)) {
     stop("Please provide a complexity parameter to split the data." %>% add_class("crtree"))
   } else if (!is.empty(nodes) && any(nodes < 2)) {
     stop("The (maximum) number of nodes in the tree should be larger than or equal to 2." %>% add_class("crtree"))
   }
-  
+
   vars <- c(rvar, evar)
-  
+
   if (is.empty(wts, "None")) {
     wts <- NULL
   } else if (is_string(wts)) {
     wtsname <- wts
     vars <- c(rvar, evar, wtsname)
   }
-  
+
   df_name <- if (is_string(dataset)) dataset else deparse(substitute(dataset))
   dataset <- get_data(dataset, vars, filt = data_filter, arr = arr, rows = rows, envir = envir)
-  
+
   if (!is.empty(wts)) {
     if (exists("wtsname")) {
       wts <- dataset[[wtsname]]
@@ -76,74 +76,74 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
       stop(paste0("Length of the weights variable is not equal to the number of rows in the dataset (", format_nr(length(wts), dec = 0), " vs ", format_nr(nrow(dataset), dec = 0), ")") %>% add_class("crtree"))
     }
   }
-  
+
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     stop(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>% add_class("crtree"))
   }
-  
+
   rv <- dataset[[rvar]]
-  
+
   if (type == "classification" && !is.factor(rv)) {
     dataset[[rvar]] <- as_factor(dataset[[rvar]])
   }
-  
+
   if (is.factor(dataset[[rvar]])) {
     if (type == "regression") {
       stop("Cannot estimate a regression when the response variable is of type factor." %>% add_class("crtree"))
     }
-    
+
     if (lev == "") {
       lev <- levels(dataset[[rvar]])[1]
     } else {
       if (!lev %in% levels(dataset[[rvar]])) {
         stop(paste0("Specified level is not a level in ", rvar) %>% add_class("crtree"))
       }
-      
+
       dataset[[rvar]] <- factor(dataset[[rvar]], levels = unique(c(lev, levels(dataset[[rvar]]))))
     }
-    
+
     type <- "classification"
     method <- "class"
   } else {
     type <- "regression"
     method <- "anova"
   }
-  
+
   dataset <- mutate_if(dataset, is.logical, as.factor)
-  
+
   if ("standardize" %in% check) {
     dataset <- scale_df(dataset, wts = wts)
   }
-  
+
   vars <- evar
   if (length(vars) < (ncol(dataset) - 1)) vars <- evar <- colnames(dataset)[-1]
-  
+
   form <- paste(rvar, "~ . ")
-  
+
   seed %>% gsub("[^0-9]", "", .) %>% (function(x) if (!is.empty(x)) set.seed(seed))
-  
+
   minsplit <- ifelse(is.empty(minsplit), 2, minsplit)
   minbucket <- ifelse(is.empty(minbucket), round(minsplit / 3), minbucket)
-  
+
   control <- rpart::rpart.control(
     cp = cp,
     xval = K,
     minsplit = minsplit,
     minbucket = minbucket
   )
-  
+
   parms <- list(split = split)
   if (type == "classification") {
     ind <- if (which(lev %in% levels(dataset[[rvar]])) == 1) c(1, 2) else c(2, 1)
     if (!is.empty(prior) && (!is_not(cost) || !is_not(margin))) {
       stop("Choose either a prior or cost and margin values but not both. Please adjust your settings and try again")
     }
-    
+
     if (!is_not(cost) && !is_not(margin)) {
       loss2 <- as.numeric(cost)
       loss1 <- as.numeric(margin) - loss2
-      
+
       if (any(loss1 <= 0)) {
         stop("Cost must be smaller than the specified margin. Please adjust the settings and try again" %>% add_class("crtree"))
       } else if (any(loss2 <= 0)) {
@@ -161,13 +161,13 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
       }
     }
   }
-  
+
   settings_list <- list(cp = cp, pcp = pcp, nodes = nodes, prior = prior, cost = cost, margin = margin)
   settings <- expand.grid(settings_list, KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
-  
+
   results <- list()
   metrics <- numeric(nrow(settings))
-  
+
   for (i in seq_len(nrow(settings))) {
     setting <- settings[i, ]
     prior_i <- setting$prior
@@ -176,9 +176,9 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
     cp_i <- setting$cp
     nodes_i <- setting$nodes
     pcp_i <- setting$pcp
-    
+
     parms <- list(split = split)
-    
+
     if (!is.null(prior_i) && !is.na(prior_i)) {
       if (!all(is.numeric(prior_i))) {
         stop("Prior did not resolve to a numeric factor")
@@ -190,7 +190,7 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
     } else if (!is.null(cost_i) && !is.null(margin_i) && !is.na(cost_i) && !is.na(margin_i)) {
       loss2 <- as.numeric(cost_i)
       loss1 <- as.numeric(margin_i) - loss2
-      
+
       if (any(loss1 <= 0)) {
         stop("Cost must be smaller than the specified margin. Please adjust the settings and try again")
       } else if (any(loss2 <= 0)) {
@@ -199,7 +199,7 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
         parms[["loss"]] <- matrix(c(0, loss1, loss2, 0), nrow = 2, byrow = TRUE)
       }
     }
-    
+
     set.seed(seed)
     control <- rpart::rpart.control(
       cp = cp_i,
@@ -207,7 +207,7 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
       minsplit = minsplit,
       minbucket = round(minsplit / 3)
     )
-    
+
     crtree_input <- list(
       formula = as.formula(form),
       data = dataset,
@@ -216,15 +216,15 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
       weights = wts,
       control = control
     )
-    
+
     model <- try(do.call(rpart::rpart, crtree_input), silent = TRUE)
-    
+
     if (inherits(model, "try-error")) {
       print(paste("Model creation failed for settings:", i, "Error:", model))
       metrics[i] <- Inf
       next
     }
-    
+
     if (!is.null(nodes_i) && !is.na(nodes_i)) {
       unpruned <- model
       if (nrow(model$frame) > 1) {
@@ -241,21 +241,21 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
         model <- rpart::prune(model, cp = pcp_i)
       }
     }
-    
+
     model$residuals <- NULL
-    
+
     if (adjprob && type == "classification" && !is.null(parms$prior)) {
       p <- parms$prior[1]
       bp <- mean(dataset[[rvar]] == lev)
       model$frame$yval2[, 4] <- bp * (p - p * prior_i) / (prior_i - p * prior_i + bp * p - prior_i * bp)
       model$frame$yval2[, 5] <- 1 - model$frame$yval2[, 4]
     }
-    
+
     model$model <- dataset
     model$var_types <- sapply(dataset, class)
-    
+
     results[[i]] <- model
-    
+
     if (type == "classification") {
       pred <- predict(model, type = "class")
       confusion <- table(pred, dataset[[rvar]])
@@ -264,24 +264,25 @@ crtree <- function(dataset, rvar, evar, type = "", lev = "", wts = "None",
       metrics[i] <- mean((dataset[[rvar]] - predict(model))^2)
     }
   }
-  
+
   if (all(is.infinite(metrics))) {
     stop("No valid model was created. Please check the input parameters.")
   }
-  
+
   if (type == "classification") {
     best_model_index <- which.max(metrics)
   } else {
     best_model_index <- which.min(metrics)
   }
-  
+
   best_model <- results[[best_model_index]]
   best_model_settings <- settings[best_model_index, ]
-  
+
   rm(dataset, envir)
-  
+
   as.list(environment()) %>% add_class(c("crtree", "model"))
 }
+
 
 #' Summary method for the crtree function
 #'
@@ -358,6 +359,16 @@ summary.crtree <- function(object, prn = TRUE, splits = FALSE, cptab = FALSE, mo
     cat(param, ":", best_settings[[param]], "\n")
   }
   cat("\n")
+
+  if (object$type == "classification") {
+    pred <- predict(object$model, type = "class")
+    confusion <- table(pred, object$rv)
+    accuracy <- sum(diag(confusion)) / sum(confusion)
+    cat("Model Accuracy       :", round(accuracy, 4), "\n\n")
+  } else {
+    mse <- mean((object$rv - predict(object$model))^2)
+    cat("Model MSE            :", round(mse, 4), "\n\n")
+  }
 
   if (splits) {
     print(object$model$split)
@@ -869,8 +880,12 @@ cv.crtree <- function(object, K = 5, repeats = 1, cp, pcp = seq(0, 0.01, length.
   object$call[["cp"]] <- out[1, "cp"]
   object$call[["data"]] <- m
   object <- rpart::prune(eval(object$call), out[1, "pcp"])
-  cat("\nGiven the provided tuning grid, the pruning complexity parameter\nshould be set to", out[1, "pcp"], "or the number of nodes set to", max(object$cptable[, "nsplit"]) + 1, "\n")
-  out
+  message <- paste(
+    "\nGiven the provided tuning grid, the pruning complexity parameter should be set to",
+    out[1, "pcp"], "or the number of nodes set to", max(object$cptable[, "nsplit"]) + 1, "\n"
+  )
+
+  return(list(out = out, message = message))
 }
 
 prob_adj <- function(mod, prior, bp) {
