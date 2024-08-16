@@ -28,6 +28,17 @@ crtree_inputs <- reactive({
   crtree_args$nodes <- as.numeric(strsplit(crtree_args$nodes, ",")[[1]])
   crtree_args
 })
+output$ui_crtree_hyperparams <- renderUI({
+  tagList(
+    h4("Hypertuning Parameters Selection"),
+    textInput("cv_crtree_cp", "Complexity (cp):", value = "0.01,0.1,0.001"),
+    textInput("cv_crtree_pcp", "Prune Complexity (pcp) values (comma-separated):", value = "0,0.005,0.01"),
+    numericInput("cv_crtree_seed", "Seed:", value = 1234),
+    numericInput("cv_crtree_kfold", "K-fold:", value = 5, min = 2, max = 10),
+    actionButton("cv_crtree_run", "Run Cross-Validation", icon = icon("play", verify_fa = FALSE), class = "btn-success")
+  )
+})
+
 output$crtree_plot_description <- renderText({
   switch(input$crtree_plots,
          "prune" = "The prune plot shows the effect of pruning on the complexity and error of the decision tree. Interpret by finding the optimal complexity parameter (cp) where the error is minimized.",
@@ -252,7 +263,7 @@ run_refresh(crtree_args, "crtree", tabs = "tabs_crtree", label = "Estimate model
 output$ui_crtree_prior <- renderUI({
   conditionalPanel(
     condition = "input.crtree_type == 'classification'",
-    textInput("crtree_prior", "Prior (comma-separated):", value = "0.5")
+    textInput("crtree_prior", "Prior:", value = "0.5")
   )
 })
 
@@ -261,23 +272,49 @@ output$ui_crtree_cost_margin <- renderUI({
   conditionalPanel(
     condition = "input.crtree_type == 'classification'",
     fluidRow(
-      column(6, textInput("crtree_cost", "Cost (comma-separated):", value = "NA")),
-      column(6, textInput("crtree_margin", "Margin (comma-separated):", value = "NA"))
+      column(6, textInput("crtree_cost", "Cost:", value = "NA")),
+      column(6, textInput("crtree_margin", "Margin:", value = "NA"))
     )
   )
 })
 
 output$ui_crtree_cp <- renderUI({
-  textInput("crtree_cp", "Complexity (comma-separated):", value = "0.001")
+  textInput("crtree_cp", "Complexity:", value = "0.001")
 })
 
 output$ui_crtree_pcp <- renderUI({
-  textInput("crtree_pcp", "Prune Complexity (comma-separated):", value = "NA")
+  textInput("crtree_pcp", "Prune Complexity:", value = "0.01")
 })
 
 output$ui_crtree_nodes <- renderUI({
-  textInput("crtree_nodes", "Nodes (comma-separated):", value = "NA")
+  textInput("crtree_nodes", "Nodes:", value = "3")
 })
+observeEvent(input$cv_crtree_run, {
+  params <- list(
+    cp = as.numeric(unlist(strsplit(input$cv_crtree_cp, ","))),
+    pcp = as.numeric(unlist(strsplit(input$cv_crtree_pcp, ",")))
+  )
+
+  result <- cv.crtree(
+    object = .crtree(),
+    cp = params$cp,
+    pcp = params$pcp,
+    K = input$cv_crtree_kfold,
+    seed = input$cv_crtree_seed
+  )
+
+  output$cv_crtree_results <- renderPrint({
+    result
+  })
+})
+output$cv_crtree_results <- renderPrint({
+  if (not_pressed(input$cv_crtree_run)) {
+    return("** Press the 'Run Cross-Validation' button to see results **")
+  }
+  result <- cv.crtree()
+  print(result)
+})
+
 
 output$ui_crtree <- renderUI({
   req(input$dataset)
@@ -318,6 +355,7 @@ output$ui_crtree <- renderUI({
             value = state_init("crtree_seed", 1234), width = "100%"
           ))
         ),
+        uiOutput("ui_crtree_hyperparams"),
         conditionalPanel(
           condition = "input.tabs_crtree == 'Model Summary'",
           tags$table(
@@ -495,7 +533,10 @@ output$crtree <- renderUI({
       div(
         style = "overflow: hidden;",
         explanation,
-        verbatimTextOutput("summary_crtree")
+        verbatimTextOutput("summary_crtree"),
+        br(),
+        h4("Cross Validation Results"),
+        verbatimTextOutput("cv_crtree_results")
       )
     ),
     tabPanel(
