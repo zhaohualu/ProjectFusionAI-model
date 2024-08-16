@@ -694,7 +694,9 @@ cv.rforest <- function(object, K = 5, repeats = 1, mtry = 1:5, num.trees = NULL,
     "mtry: ", best_params$mtry, "\n",
     "num.trees: ", best_params$num.trees, "\n",
     "min.node.size: ", best_params$min.node.size, "\n",
-    "sample.fraction: ", best_params$sample.fraction, "\n"
+    "sample.fraction: ", best_params$sample.fraction, "\n",
+    "To re-run the model with these parameters, please update the estimate model section with these values to get the best model."
+
   )
 
   # Return results and the message
