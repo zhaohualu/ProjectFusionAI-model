@@ -882,7 +882,9 @@ cv.crtree <- function(object, K = 5, repeats = 1, cp, pcp = seq(0, 0.01, length.
   object <- rpart::prune(eval(object$call), out[1, "pcp"])
   message <- paste(
     "\nGiven the provided tuning grid, the pruning complexity parameter should be set to",
-    out[1, "pcp"], "or the number of nodes set to", max(object$cptable[, "nsplit"]) + 1, "\n"
+    out[1, "pcp"], "or the number of nodes set to", max(object$cptable[, "nsplit"]) + 1, "\n",
+    "To re-run the model with these parameters, please update the estimate model section with these values to get the best model."
+
   )
 
   return(list(out = out, message = message))
