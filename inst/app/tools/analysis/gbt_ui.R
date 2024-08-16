@@ -468,7 +468,8 @@ output$gbt <- renderUI({
       verbatimTextOutput("summary_gbt"),
       br(),
       h4("Cross Validation Results"),
-      verbatimTextOutput("cv_gbt_results")
+      verbatimTextOutput("cv_gbt_results"),
+      verbatimTextOutput("cv_gbt_message"),
     ),
     tabPanel(
       "Model Performance Plots",  # Moved this tab above "Predictions"
@@ -514,7 +515,11 @@ observeEvent(input$cv_gbt_run, {
   )
 
   output$cv_gbt_results <- renderPrint({
-    result
+    result$results
+  })
+
+  output$cv_gbt_message <- renderText({
+    result$message
   })
 })
 
