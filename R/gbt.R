@@ -719,10 +719,25 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
 
   out <- bind_rows(out)
   if (type == "classification") {
-    out[order(out[[5]], decreasing = TRUE), ]
+    sorted_out <- out[order(out[[5]], decreasing = TRUE), ]
   } else {
-    out[order(out[[5]], decreasing = FALSE), ]
+    sorted_out <- out[order(out[[5]], decreasing = FALSE), ]
   }
+  best_params <- sorted_out[1, ]
+
+  # Generate a message with the best parameters
+  message <- paste0(
+    "Based on cross-validation, the best hyperparameters are:\n",
+    "max_depth: ", best_params$max_depth, "\n",
+    "learning_rate: ", best_params$learning_rate, "\n",
+    "min_child_weight: ", best_params$min_child_weight, "\n",
+    "subsample: ", best_params$subsample, "\n",
+    "min_split_loss: ", best_params$min_split_loss, "\n",
+    "Best nrounds: ", best_params$best_iteration, "\n"
+  )
+
+  # Return the results and the message
+  list(results = sorted_out, message = message)
 }
 
 
