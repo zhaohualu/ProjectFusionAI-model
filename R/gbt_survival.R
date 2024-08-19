@@ -463,11 +463,12 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
         "\n", sep = "")
     cat("n = ", object$cox_model$n, ", number of events = ", sum(object$cox_model$y[, 2]), "\n", sep = "")
     cat("\nCox Model Concordance Index (C-index): ", object$best_model$avg_cox_c_index, "\n", sep = "")
-    cat("Interpretation: The C-index measures the discriminatory power of the model.\n")
-    cat("A value of 0.5 indicates no better discrimination than random chance,\n")
-    cat("while a value closer to 1 indicates perfect discrimination.\n")
-    cat("\nCox Model Brier Score: ", object$best_model$IBS_coxpb, "\n", sep = "")
-    cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
+    cat("Interpretation: The C-index measures the level at which the order of the predictive risk \n")    
+    cat("agrees with the order of observed survival time, .e.g, the longer the observed  survival time, the lower the risk. \n")
+    cat("It is similar to rank correlation. \n")
+    cat("High values mean that your model predicts higher probabilities of survival for higher observed survival times.\n")
+    cat("\nCox Model Integrated Brier Score: ", object$best_model$IBS_coxpb, "\n", sep = "")
+    cat("Interpretation: The Brier score measures the accuracy of predictive survival probability.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
   
@@ -482,11 +483,12 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
       cat(paste(param, ":", object$best_rf_params[[param]], "\n"))
     }
     cat("\nRandom Forest Model Concordance Index (C-index): ", object$best_model$avg_rf_c_index, "\n", sep = "")
-    cat("Interpretation: The C-index measures the discriminatory power of the model.\n")
-    cat("A value of 0.5 indicates no better discrimination than random chance,\n")
-    cat("while a value closer to 1 indicates perfect discrimination.\n")
-    cat("\nRandom Forest Model Brier Score: ", object$best_model$avg_rf_ibs_score, "\n", sep = "")
-    cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
+    cat("Interpretation: The C-index measures the level at which the order of the predictive risk \n")    
+    cat("agrees with the order of observed survival time, .e.g, the longer the observed  survival time, the lower the risk. \n")
+    cat("It is similar to rank correlation. \n")
+    cat("High values mean that your model predicts higher probabilities of survival for higher observed survival times.\n")
+    cat("\nRandom Forest Model Integrated Brier Score: ", object$best_model$avg_rf_ibs_score, "\n", sep = "")
+    cat("Interpretation: The Integrated Brier score measures the accuracy of predictive survival probability.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
   
@@ -505,11 +507,12 @@ summary.gbt_survival <- function(object, prn = TRUE, ...) {
       cat(paste(param, ":", best_tuning_params[[param]], "\n"))
     }
     cat("\nXGBoost Model Concordance Index (C-index): ", object$best_model$avg_xgb_c_index, "\n", sep = "")
-    cat("Interpretation: The C-index measures the discriminatory power of the model.\n")
-    cat("A value of 0.5 indicates no better discrimination than random chance,\n")
-    cat("while a value closer to 1 indicates perfect discrimination.\n")
-    cat("\nXGBoost Model Brier Score: ", object$best_model$avg_xgb_brier_score, "\n", sep = "")
-    cat("Interpretation: The Brier score measures the accuracy of probabilistic predictions.\n")
+    cat("Interpretation: The C-index measures the level at which the order of the predictive risk \n")    
+    cat("agrees with the order of observed survival time, .e.g, the longer the observed  survival time, the lower the risk. \n")
+    cat("It is similar to rank correlation. \n")
+    cat("High values mean that your model predicts higher probabilities of survival for higher observed survival times.\n")
+    cat("\nXGBoost Model Integrated Brier Score: ", object$best_model$avg_xgb_brier_score, "\n", sep = "")
+    cat("Interpretation: The Integrated Brier score measures the accuracy of predictive survival probability.\n")
     cat("A lower score indicates better model performance, with a score of 0 representing perfect accuracy.\n")
   }
   
@@ -739,6 +742,7 @@ print.gbt_survival.predict <- function(x, ..., n = 10) {
 #' @importFrom xgboost xgb.cv xgb.DMatrix
 #' @importFrom dplyr bind_rows
 #' @importFrom shiny incProgress withProgress
+#' 
 #'
 #' @export
 cv.gbt_survival <- function(object, K = 5, repeats = 1, params = list(),
@@ -1353,15 +1357,6 @@ plot.gbt_survival <- function(x, plots = "", incl = NULL, evar_values = list(), 
     }
   })
 }
-
-
-                                            
-
-
-
-
-
-
 
 
 

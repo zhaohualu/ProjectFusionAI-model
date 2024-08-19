@@ -107,6 +107,21 @@ output$ui_gbt_rvar <- renderUI({
     multiple = FALSE
   )
 })
+output$ui_gbt_hyperparams <- renderUI({
+  tagList(
+    h4("Hypertuning Parameters Selection"),
+    textInput("cv_gbt_max_depth", "Max depth (comma-separated):", value = "1,2,3"),
+    textInput("cv_gbt_learning_rate", "Learning rate (comma-separated):", value = "0.1,0.2,0.3"),
+    textInput("cv_gbt_min_split_loss", "Min split loss (comma-separated):", value = "0"),
+    textInput("cv_gbt_min_child_weight", "Min child weight (comma-separated):", value = "1"),
+    textInput("cv_gbt_subsample", "Sub-sample (comma-separated):", value = "1"),
+    textInput("cv_gbt_nrounds", "# rounds (comma-separated):", value = "500"),
+    numericInput("cv_gbt_early_stopping_rounds", "Early stopping:", min = 1, max = 10, value = 10),
+    numericInput("cv_gbt_seed", "Seed:", value = 1234),
+    actionButton("cv_gbt_run", "Run Cross-Validation", icon = icon("play", verify_fa = FALSE), class = "btn-success"),
+  )
+})
+
 
 output$ui_gbt_lev <- renderUI({
   req(input$gbt_type == "classification")
@@ -310,7 +325,8 @@ output$ui_gbt <- renderUI({
             ), width = "50%")
           ),
           width = "100%"
-        ))
+        )),
+        uiOutput("ui_gbt_hyperparams")  # Moved the hypertuning section to the bottom
       ),
       conditionalPanel(
         condition = "input.tabs_gbt == 'Predictions'",
@@ -430,7 +446,6 @@ gbt_pred_plot_height <- function() {
 }
 
 ## output is called from the main radiant ui.R
-## output is called from the main radiant ui.R
 output$gbt <- renderUI({
   register_print_output("summary_gbt", ".summary_gbt")
   register_print_output("predict_gbt", ".predict_print_gbt")
@@ -445,68 +460,34 @@ output$gbt <- renderUI({
   )
 
   ## three separate tabs
+  ## three separate tabs
   gbt_output_panels <- tabsetPanel(
     id = "tabs_gbt",
     tabPanel(
       "Model Summary",
-      verbatimTextOutput("summary_gbt")
+      verbatimTextOutput("summary_gbt"),
+      br(),
+      h4("Cross Validation Results"),
+      verbatimTextOutput("cv_gbt_results"),
+      verbatimTextOutput("cv_gbt_message"),
     ),
     tabPanel(
-      "Model Performance Plots",
+      "Model Performance Plots",  # Moved this tab above "Predictions"
       download_link("dlp_gbt"),
-      plotOutput("plot_gbt", width = "100%", height = "100%"),
-      HTML("
-        <h4>Understanding Model Performance Plots</h4>
-        <p>
-          The plots tab provides various visualizations to help understand the model's performance and behavior.
-        </p>
-        <h5>Permutation Importance:</h5>
-        <p>
-          This plot shows the importance of each feature based on the decrease in model performance when the feature's values are randomly shuffled. Higher importance indicates a greater impact on the model's predictions.
-        </p>
-        <h5>Prediction Plots:</h5>
-        <p>
-          These plots display the model's predictions against the actual values, helping to visualize how well the model is performing.
-        </p>
-        <h5>Partial Dependence Plots (PDP):</h5>
-        <p>
-          PDPs show the relationship between a feature and the predicted outcome, marginalizing over the other features. It helps in understanding how changes in a feature influence the model's predictions.
-        </p>
-        <h5>Dashboard:</h5>
-        <p>
-          The dashboard provides an overview of multiple plots, giving a comprehensive view of the model's performance across different metrics and features.
-        </p>
-      ")
+      plotOutput("plot_gbt", width = "100%", height = "100%")
     ),
     tabPanel(
-      "Predictions",
+      "Predictions",  # Moved this tab below "Model Performance Plots"
       conditionalPanel(
         "input.gbt_pred_plot == true",
         download_link("dlp_gbt_pred"),
         plotOutput("predict_plot_gbt", width = "100%", height = "100%")
       ),
       download_link("dl_gbt_pred"), br(),
-      verbatimTextOutput("predict_gbt"),
-      HTML("
-        <h4>Interpreting Prediction Values</h4>
-        <p>
-          The predictions tab displays the results of the model predictions. Depending on whether you're using the model for classification or regression, the output will differ.
-        </p>
-        <h5>For Classification Tasks:</h5>
-        <p>
-          The output is a probability distribution across different classes. The predicted class is the one with the highest probability.
-        </p>
-        <h5>For Regression Tasks:</h5>
-        <p>
-          The output is a continuous value representing the model's estimate for the response variable.
-        </p>
-        <h5>Plotting Predictions:</h5>
-        <p>
-          You can choose to plot the predictions to visually inspect how well the model performs across different data points.
-        </p>
-      ")
+      verbatimTextOutput("predict_gbt")
     )
   )
+
 
   stat_tab_panel(
     menu = "Model > Trees",
@@ -515,7 +496,32 @@ output$gbt <- renderUI({
     output_panels = gbt_output_panels
   )
 })
+observeEvent(input$cv_gbt_run, {
+  params <- list(
+    max_depth = as.numeric(unlist(strsplit(input$cv_gbt_max_depth, ","))),
+    learning_rate = as.numeric(unlist(strsplit(input$cv_gbt_learning_rate, ","))),
+    min_split_loss = as.numeric(unlist(strsplit(input$cv_gbt_min_split_loss, ","))),
+    min_child_weight = as.numeric(unlist(strsplit(input$cv_gbt_min_child_weight, ","))),
+    subsample = as.numeric(unlist(strsplit(input$cv_gbt_subsample, ",")))
+  )
 
+  result <- cv.gbt(
+    object = .gbt(),
+    params = params,
+    nrounds = as.numeric(unlist(strsplit(input$cv_gbt_nrounds, ","))),
+    early_stopping_rounds = input$cv_gbt_early_stopping_rounds,
+    nthread = 12,
+    seed = input$cv_gbt_seed
+  )
+
+  output$cv_gbt_results <- renderPrint({
+    result$results
+  })
+
+  output$cv_gbt_message <- renderText({
+    result$message
+  })
+})
 
 gbt_available <- reactive({
   req(input$gbt_type)

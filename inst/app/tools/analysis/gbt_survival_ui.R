@@ -508,7 +508,7 @@ output$gbt_survival <- renderUI({
         ),
         column(3,
                h4("Brier Score Plot Interpretation"),
-               p("The Brier Score measures the accuracy of probabilistic predictions. Lower values indicate better model performance. The plot shows the Brier Score over time."),
+               p("The Brier Score measures the accuracy of predictive survival probability. Lower values indicate better model performance. The plot shows the Brier Score over time."),
                p("For more information, visit ",
                  a("Brier Score Explanation", href = "https://ema.drwhy.ai/modelPerformance.html#modelPerformanceMethodBin", target = "_blank"))
         )
@@ -519,7 +519,7 @@ output$gbt_survival <- renderUI({
         ),
         column(3,
                h4("Time-dependent ROC Curve Interpretation"),
-               p("The ROC curve plots the True Positive Rate (Sensitivity) against the False Positive Rate (1-Specificity) at different threshold settings. It helps evaluate the diagnostic ability of the model over time. A larger area under the curve indicates better model performance."),
+               p("Time dependent ROC is based on the survival status specified in the ROC Time on the left panel. The ROC curve plots the True Positive Rate (Sensitivity) against the False Positive Rate (1-Specificity) at different threshold settings. It helps evaluate the diagnostic ability of the model over time. A larger area under the curve indicates better model performance."),
                p("For more information, visit ",
                  a("ROC Curve Explanation", href = "https://ema.drwhy.ai/modelPerformance.html#modelPerformanceMethodBinGOP", target = "_blank"))
         )
@@ -530,7 +530,9 @@ output$gbt_survival <- renderUI({
         ),
         column(3,
                h4("Residual Plot Interpretation"),
-               p("The Residual Plot shows the deviance residuals of the model. Deviance residuals can help diagnose model fit, with residuals scattered randomly around 0 indicating a good fit. Larger residuals indicate potential outliers or areas where the model doesn't fit well."),
+               p("The Residual Plot shows the deviance residuals of the model. Deviance residuals can help diagnose model fit, with residuals scattered randomly around 0 indicating a good fit. Larger residuals indicate potential outliers or areas where the model doesn't fit well.
+                 In survival analysis, it's not uncommon to see some separation between the deviance residuals of censored data and events. However,
+                 significant separation may indicate a potential issue with the model's fit."),
                p("For more information, visit ",
                  a("Residual Plot Explanation", href = "https://ema.drwhy.ai/residualDiagnostic.html", target = "_blank"))
         )

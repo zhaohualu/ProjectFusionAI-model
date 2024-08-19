@@ -55,32 +55,31 @@
 #'
 #' @export
 gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
-                max_depth = c(6), learning_rate = c(0.3), min_split_loss = c(0),
-                min_child_weight = c(1), subsample = c(1),
-                nrounds = c(100), early_stopping_rounds = 10,
+                max_depth = 6, learning_rate = 0.3, min_split_loss = 0,
+                min_child_weight = 1, subsample = 1,
+                nrounds = 100, early_stopping_rounds = 10,
                 nthread = 12, wts = "None", seed = NA,
                 data_filter = "", arr = "", rows = NULL,
                 envir = parent.frame(), ...) {
-  
   if (rvar %in% evar) {
     return("Response variable contained in the set of explanatory variables.\nPlease update model specification." %>%
              add_class("gbt"))
   }
-  
+
   vars <- c(rvar, evar)
-  
+
   if (is.empty(wts, "None")) {
     wts <- NULL
   } else if (is_string(wts)) {
     wtsname <- wts
     vars <- c(rvar, evar, wtsname)
   }
-  
+
   df_name <- if (is_string(dataset)) dataset else deparse(substitute(dataset))
   dataset <- get_data(dataset, vars, filt = data_filter, arr = arr, rows = rows, envir = envir) %>%
     mutate_if(is.Date, as.numeric)
   nr_obs <- nrow(dataset)
-  
+
   if (!is.empty(wts, "None")) {
     if (exists("wtsname")) {
       wts <- dataset[[wtsname]]
@@ -93,15 +92,15 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
       )
     }
   }
-  
+
   not_vary <- colnames(dataset)[summarise_all(dataset, does_vary) == FALSE]
   if (length(not_vary) > 0) {
     return(paste0("The following variable(s) show no variation. Please select other variables.\n\n** ", paste0(not_vary, collapse = ", "), " **") %>%
              add_class("gbt"))
   }
-  
+
   rv <- dataset[[rvar]]
-  
+
   if (type == "classification") {
     if (lev == "") {
       if (is.factor(rv)) {
@@ -117,118 +116,81 @@ gbt <- function(dataset, rvar, evar, type = "classification", lev = "",
       dataset[[rvar]] <- relevel(dataset[[rvar]], lev)
     }
   }
-  
+
   vars <- evar
   ## in case : is used
   if (length(vars) < (ncol(dataset) - 1)) {
     vars <- evar <- colnames(dataset)[-1]
   }
-  
-  param_grid <- expand.grid(
+
+  gbt_input <- list(
     max_depth = max_depth,
     learning_rate = learning_rate,
     min_split_loss = min_split_loss,
+    nrounds = nrounds,
     min_child_weight = min_child_weight,
     subsample = subsample,
-    nrounds = nrounds
+    early_stopping_rounds = early_stopping_rounds,
+    nthread = nthread
   )
-  
-  best_model <- NULL
-  best_metric <- if (type == "regression") Inf else -Inf
-  best_params <- NULL
-  best_iteration_history <- NULL
-  
-  for (i in seq_len(nrow(param_grid))) {
-    params <- param_grid[i, ]
-    gbt_input <- list(
-      max_depth = params$max_depth,
-      learning_rate = params$learning_rate,
-      min_split_loss = params$min_split_loss,
-      nrounds = params$nrounds,
-      min_child_weight = params$min_child_weight,
-      subsample = params$subsample,
-      early_stopping_rounds = early_stopping_rounds,
-      nthread = nthread
-    )
-    
-    ## checking for extra args
-    extra_args <- list(...)
-    extra_args_names <- names(extra_args)
-    check_args <- function(arg, default, inp = gbt_input) {
-      if (!arg %in% extra_args_names) inp[[arg]] <- default
-      inp
-    }
-    
-    if (type == "classification") {
-      gbt_input <- check_args("objective", "binary:logistic")
-      gbt_input <- check_args("eval_metric", "auc")
-      dty <- as.integer(dataset[[rvar]] == lev)
-    } else {
-      gbt_input <- check_args("objective", "reg:squarederror")
-      gbt_input <- check_args("eval_metric", "rmse")
-      dty <- dataset[[rvar]]
-    }
-    
-    ## adding data
-    dtx <- onehot(dataset[, -1, drop = FALSE])[, -1, drop = FALSE]
-    gbt_input <- c(gbt_input, list(data = dtx, label = dty), ...)
-    
-    ## based on https://stackoverflow.com/questions/14324096/setting-seed-locally-not-globally-in-r/14324316#14324316
-    seed <- gsub("[^0-9]", "", seed)
-    if (!is.empty(seed)) {
-      if (exists(".Random.seed")) {
-        gseed <- .Random.seed
-        on.exit(.Random.seed <<- gseed)
-      }
-      set.seed(seed)
-    }
-    
-    ## capturing the iteration history
-    iteration_history <- capture.output(model <- do.call(xgboost::xgboost, gbt_input))
-    
-    ## evaluating the model
-    if (type == "regression") {
-      metric <- mean((dataset[[rvar]] - predict(model, dtx))^2)
-      if (metric < best_metric) {
-        best_metric <- metric
-        best_model <- model
-        best_params <- params
-        best_iteration_history <- iteration_history
-      }
-    } else {
-      pred <- predict(model, dtx)
-      pred <- ifelse(pred > 0.5, lev, levels(dataset[[rvar]])[1])
-      metric <- mean(pred == dataset[[rvar]])
-      if (metric > best_metric) {
-        best_metric <- metric
-        best_model <- model
-        best_params <- params
-        best_iteration_history <- iteration_history
-      }
-    }
+
+  ## checking for extra args
+  extra_args <- list(...)
+  extra_args_names <- names(extra_args)
+  check_args <- function(arg, default, inp = gbt_input) {
+    if (!arg %in% extra_args_names) inp[[arg]] <- default
+    inp
   }
-  
+
+  if (type == "classification") {
+    gbt_input <- check_args("objective", "binary:logistic")
+    gbt_input <- check_args("eval_metric", "auc")
+    dty <- as.integer(dataset[[rvar]] == lev)
+  } else {
+    gbt_input <- check_args("objective", "reg:squarederror")
+    gbt_input <- check_args("eval_metric", "rmse")
+    dty <- dataset[[rvar]]
+  }
+
+  ## adding data
+  dtx <- onehot(dataset[, -1, drop = FALSE])[, -1, drop = FALSE]
+  gbt_input <- c(gbt_input, list(data = dtx, label = dty), ...)
+
+  ## based on https://stackoverflow.com/questions/14324096/setting-seed-locally-not-globally-in-r/14324316#14324316
+  seed <- gsub("[^0-9]", "", seed)
+  if (!is.empty(seed)) {
+    if (exists(".Random.seed")) {
+      gseed <- .Random.seed
+      on.exit(.Random.seed <<- gseed)
+    }
+    set.seed(seed)
+  }
+
+  ## capturing the iteration history
+  output <- capture.output(model <<- do.call(xgboost::xgboost, gbt_input))
+
   ## adding residuals for regression models
   if (type == "regression") {
-    best_model$residuals <- dataset[[rvar]] - predict(best_model, dtx)
+    model$residuals <- dataset[[rvar]] - predict(model, dtx)
   } else {
-    best_model$residuals <- NULL
+    model$residuals <- NULL
   }
-  
+
+  ## adding feature importance information
+  ## replaced by premutation importance
+  # model$importance <- xgboost::xgb.importance(model = model)
+
   ## gbt model object does not include the data by default
-  
-  model <- best_model
   model$model <- dataset
-  model$best_params <- best_params
-  model$iteration_history <- best_iteration_history
-  
+
+  rm(dataset, dty, dtx, rv, envir) ## dataset not needed elsewhere
+  gbt_input$data <- gbt_input$label <- NULL
+
   ## needed to work with prediction functions
   check <- ""
-  
+
   as.list(environment()) %>% add_class(c("gbt", "model"))
 }
-
-
 
 #' Summary method for the gbt function
 #'
@@ -253,14 +215,12 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   if (is.character(object)) {
     return(object)
   }
-  
   cat("Gradient Boosted Trees (XGBoost)\n")
   if (object$type == "classification") {
     cat("Type                 : Classification")
   } else {
     cat("Type                 : Regression")
   }
-  
   cat("\nData                 :", object$df_name)
   if (!is.empty(object$data_filter)) {
     cat("\nFilter               :", gsub("\\n", "", object$data_filter))
@@ -279,7 +239,6 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   if (length(object$wtsname) > 0) {
     cat("Weights used         :", object$wtsname, "\n")
   }
-  
   cat("Max depth            :", object$max_depth, "\n")
   cat("Learning rate (eta)  :", object$learning_rate, "\n")
   cat("Min split loss       :", object$min_split_loss, "\n")
@@ -287,17 +246,6 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   cat("Sub-sample           :", object$subsample, "\n")
   cat("Nr of rounds (trees) :", object$nrounds, "\n")
   cat("Early stopping rounds:", object$early_stopping_rounds, "\n")
-  
-  if (!is.null(object$best_params)) {
-    cat("Best Hyperparameters:\n")
-    cat("  Max depth            :", object$best_params$max_depth, "\n")
-    cat("  Learning rate (eta)  :", object$best_params$learning_rate, "\n")
-    cat("  Min split loss       :", object$best_params$min_split_loss, "\n")
-    cat("  Min child weight     :", object$best_params$min_child_weight, "\n")
-    cat("  Sub-sample           :", object$best_params$subsample, "\n")
-    cat("  Nr of rounds (trees) :", object$best_params$nrounds, "\n")
-  }
-  
   if (length(object$extra_args)) {
     extra_args <- deparse(object$extra_args) %>%
       sub("list\\(", "", .) %>%
@@ -308,30 +256,20 @@ summary.gbt <- function(object, prn = TRUE, ...) {
   if (!is.empty(object$seed)) {
     cat("Seed                 :", object$seed, "\n")
   }
-  
+
   if (!is.empty(object$wts, "None") && (length(unique(object$wts)) > 2 || min(object$wts) >= 1)) {
     cat("Nr obs               :", format_nr(sum(object$wts), dec = 0), "\n")
   } else {
     cat("Nr obs               :", format_nr(object$nr_obs, dec = 0), "\n")
   }
-  
-  if (!is.null(object$best_eval_log)) {
-    cat("The Train RMSE provides an estimate of the model's prediction error on the training data.\n")
-    cat("It is calculated as the square root of the average squared differences between the predicted and actual values. Here's how to interpret it:\n")
-    cat("  - A lower RMSE indicates better fit and fewer errors.\n")
-    cat("  - Compare the RMSE to the range of the response variable to get a sense of the model's performance.\n")
-    cat("  - Use RMSE in conjunction with other metrics and cross-validation results to assess model performance comprehensively.\n")
-  }
-  
+
   if (isTRUE(prn)) {
     cat("\nIteration history:\n\n")
-    ih <- object$best_iteration_history[c(-2, -3)]
+    ih <- object$output[c(-2, -3)]
     if (length(ih) > 20) ih <- c(head(ih, 10), "...", tail(ih, 10))
     cat(paste0(ih, collapse = "\n"))
   }
 }
-
-
 
 #' Plot method for the gbt function
 #'
@@ -371,12 +309,12 @@ plot.gbt <- function(x, plots = "", nrobs = Inf,
   }
   plot_list <- list()
   ncol <- 1
-  
+
   if (x$type == "regression" && "dashboard" %in% plots) {
     plot_list <- plot.regress(x, plots = "dashboard", lines = "line", nrobs = nrobs, custom = TRUE)
     ncol <- 2
   }
-  
+
   if ("pdp" %in% plots) {
     ncol <- 2
     if (length(incl) == 0 && length(incl_int) == 0) {
@@ -460,7 +398,7 @@ plot.gbt <- function(x, plots = "", nrobs = Inf,
       }
     }
   }
-  
+
   if ("pred_plot" %in% plots) {
     ncol <- 2
     if (length(incl) > 0 | length(incl_int) > 0) {
@@ -469,7 +407,7 @@ plot.gbt <- function(x, plots = "", nrobs = Inf,
       return("Select one or more variables to generate Prediction plots")
     }
   }
-  
+
   if ("vip" %in% plots) {
     ncol <- 1
     if (length(x$evar) < 2) {
@@ -487,7 +425,7 @@ plot.gbt <- function(x, plots = "", nrobs = Inf,
         theme(axis.text.y = element_text(hjust = 0))
     }
   }
-  
+
   if (length(plot_list) > 0) {
     if (custom) {
       if (length(plot_list) == 1) plot_list[[1]] else plot_list
@@ -527,63 +465,39 @@ predict.gbt <- function(object, pred_data = NULL, pred_cmd = "",
   if (is.character(object)) {
     return(object)
   }
-  
+
   ## ensure you have a name for the prediction dataset
   if (is.data.frame(pred_data)) {
     df_name <- deparse(substitute(pred_data))
   } else {
     df_name <- pred_data
   }
-  
+
   pfun <- function(model, pred, se, conf_lev) {
     ## ensure the factor levels in the prediction data are the
     ## same as in the data used for estimation
-    if (!is.null(model$model)) {
-      est_data <- model$model[, -1, drop = FALSE]
-      for (i in colnames(pred)) {
-        if (is.factor(est_data[[i]])) {
-          pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
-        }
+    est_data <- model$model[, -1, drop = FALSE]
+    for (i in colnames(pred)) {
+      if (is.factor(est_data[[i]])) {
+        pred[[i]] <- factor(pred[[i]], levels = levels(est_data[[i]]))
       }
-      pred <- onehot(pred[, colnames(est_data), drop = FALSE])[, -1, drop = FALSE]
-      ## for testing purposes
-      # pred <- model$model[, -1, drop = FALSE]
-      pred_val <- try(sshhr(predict(model, pred)), silent = TRUE)
-      if (!inherits(pred_val, "try-error")) {
-        pred_val %<>% as.data.frame(stringsAsFactors = FALSE) %>%
-          select(1) %>%
-          set_colnames("Prediction")
-      }
-      return(pred_val)
-    } else {
-      stop("The best_model does not contain the 'model' component.")
     }
-  }
-  
-  result <- predict_model(object, pfun, "gbt.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
-    set_attr("radiant_pred_data", df_name)
-  
-  ## Print the interpretation guide for users
-  cat("\n### Interpreting Prediction Values ###\n")
-  if (object$type == "classification") {
-    cat("
-    For Classification:
-    - Each prediction is a probability distribution over the possible classes.
-    - Each column in the prediction output represents a possible class label.
-    - Each cell contains the probability that the given observation belongs to that class.
-    - The class with the highest probability is the predicted class for that observation.\n")
-  } else {
-    cat("
-    For Regression:
-    - Each prediction is a continuous value representing the estimated response.
-    - Each row represents a single observation.
-    - The predicted value in each row is the model's estimate for the response variable for that observation.
-    - Compare the predicted values to the actual values to assess the model's performance.\n")
-  }
-  
-  return(result)
-}
+    pred <- onehot(pred[, colnames(est_data), drop = FALSE])[, -1, drop = FALSE]
+    ## for testing purposes
+    # pred <- model$model[, -1, drop = FALSE]
+    pred_val <- try(sshhr(predict(model, pred)), silent = TRUE)
+    if (!inherits(pred_val, "try-error")) {
+      pred_val %<>% as.data.frame(stringsAsFactors = FALSE) %>%
+        select(1) %>%
+        set_colnames("Prediction")
+    }
 
+    pred_val
+  }
+
+  predict_model(object, pfun, "gbt.predict", pred_data, pred_cmd, conf_lev = 0.95, se = FALSE, dec, envir = envir) %>%
+    set_attr("radiant_pred_data", df_name)
+}
 
 #' Print method for predict.gbt
 #'
@@ -678,7 +592,7 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
   if (!inherits(train, "xgb.DMatrix")) {
     stop("Could not access data. Please use the 'train' argument to pass along a matrix created using xgboost::xgb.DMatrix")
   }
-  
+
   params_base[c("nrounds", "nthread", "silent")] <- NULL
   for (n in names(params)) {
     params_base[[n]] <- params[[n]]
@@ -687,7 +601,7 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
   if (is.empty(maximize)) {
     maximize <- params$maximize
   }
-  
+
   if (missing(fun)) {
     if (type == "classification") {
       if (length(params$eval_metric) == 0) {
@@ -707,7 +621,7 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
       }
     }
   }
-  
+
   if (length(shiny::getDefaultReactiveDomain()) > 0) {
     trace <- FALSE
     incProgress <- shiny::incProgress
@@ -716,7 +630,7 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
     incProgress <- function(...) {}
     withProgress <- function(...) list(...)[["expr"]]
   }
-  
+
   ## setting up a customer evaluation function
   if (is.function(fun)) {
     if (missing(...)) {
@@ -757,7 +671,7 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
   } else {
     fun_wrapper <- params$eval_metric <- fun
   }
-  
+
   tf <- tempfile()
   tune_grid <- expand.grid(params)
   nitt <- nrow(tune_grid)
@@ -802,12 +716,30 @@ cv.gbt <- function(object, K = 5, repeats = 1, params = list(),
       incProgress(1 / nitt, detail = paste("\nCompleted run", i, "out of", nitt))
     }
   })
-  
+
   out <- bind_rows(out)
   if (type == "classification") {
-    out[order(out[[5]], decreasing = TRUE), ]
+    sorted_out <- out[order(out[[5]], decreasing = TRUE), ]
   } else {
-    out[order(out[[5]], decreasing = FALSE), ]
+    sorted_out <- out[order(out[[5]], decreasing = FALSE), ]
   }
+  best_params <- sorted_out[1, ]
+
+  # Generate a message with the best parameters
+  message <- paste0(
+    "Based on cross-validation, the best hyperparameters are:\n",
+    "max_depth: ", best_params$max_depth, "\n",
+    "learning_rate: ", best_params$learning_rate, "\n",
+    "min_child_weight: ", best_params$min_child_weight, "\n",
+    "subsample: ", best_params$subsample, "\n",
+    "min_split_loss: ", best_params$min_split_loss, "\n",
+    "Best nrounds: ", best_params$best_iteration, "\n\n",
+    "To re-run the model with these parameters, please update the estimate model section with these values to get the best model."
+  )
+
+  # Return the results and the message
+  list(results = sorted_out, message = message)
 }
+
+
 

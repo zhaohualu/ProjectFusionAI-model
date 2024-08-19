@@ -124,6 +124,18 @@ output$ui_rf_lev <- renderUI({
     selected = state_init("rf_lev", init)
   )
 })
+output$ui_rf_hyperparams <- renderUI({
+  tagList(
+    h4("Hypertuning Parameters Selection"),
+    textInput("cv_rf_mtry", "mtry (comma-separated):", value = "1,2,3"),
+    textInput("cv_rf_num_trees", "# trees (comma-separated):", value = "100,200,300"),
+    textInput("cv_rf_min_node_size", "Min node size (comma-separated):", value = "1,10"),
+    textInput("cv_rf_sample_fraction", "Sample fraction (comma-separated):", value = "0.5,0.75,1"),
+    numericInput("cv_rf_seed", "Seed:", value = 1234),
+    actionButton("cv_rf_run", "Run Cross-Validation", icon = icon("play", verify_fa = FALSE), class = "btn-success"),
+  )
+})
+
 
 output$ui_rf_evar <- renderUI({
   if (not_available(input$rf_rvar)) {
@@ -290,7 +302,8 @@ output$ui_rf <- renderUI({
           ),
           width = "100%"
         )),
-        numericInput("rf_seed", label = "Seed:", value = state_init("rf_seed", 1234))
+        numericInput("rf_seed", label = "Seed:", value = state_init("rf_seed", 1234)),
+        uiOutput("ui_rf_hyperparams")
       ),
       conditionalPanel(
         condition = "input.tabs_rf == 'Predictions'",
@@ -366,6 +379,31 @@ output$ui_rf <- renderUI({
     )
   )
 })
+observeEvent(input$cv_rf_run, {
+  # Extract hyperparameters from the inputs
+  mtry_vals <- as.numeric(unlist(strsplit(input$cv_rf_mtry, ",")))
+  num_trees_vals <- as.numeric(unlist(strsplit(input$cv_rf_num_trees, ",")))
+  min_node_size_vals <- as.numeric(unlist(strsplit(input$cv_rf_min_node_size, ",")))
+  sample_fraction_vals <- as.numeric(unlist(strsplit(input$cv_rf_sample_fraction, ",")))
+
+  # Perform cross-validation using the cv.rforest function
+  result <- cv.rforest(
+    object = .rf(),  # Use the current random forest model
+    mtry = mtry_vals,
+    num.trees = num_trees_vals,
+    min.node.size = min_node_size_vals,
+    sample.fraction = sample_fraction_vals,
+    seed = input$cv_rf_seed
+  )
+
+  # Render the cross-validation results
+  output$cv_rforest_results <- renderPrint({
+    result$results
+  })
+  output$cv_rforest_message <- renderText({
+    result$message
+  })
+})
 
 rf_plot <- reactive({
   if (rf_available() != "available") {
@@ -432,6 +470,10 @@ output$rf <- renderUI({
     tabPanel(
       "Model Summary",
       verbatimTextOutput("summary_rf"),
+      br(),
+      h4("Cross Validation Results"),
+      verbatimTextOutput("cv_rforest_results"),
+      verbatimTextOutput("cv_rforest_message"),
       HTML("
         <h4>Interpreting Model Performance Metrics</h4>
         <h5>Out-of-Bag (OOB) Prediction Error</h5>
@@ -812,6 +854,8 @@ observeEvent(input$modal_rf_screenshot, {
   rf_report()
   removeModal() ## remove shiny modal after save
 })
+
+
 
 
 
