@@ -46,7 +46,7 @@ Imports:
     intsurv,
     survivalROC,
     survex,
-    randomForestSRC,
+    randomForestSRC (>=3.3.0),
     gbm,
     Matrix (>= 1.6.0)
 Remotes:
